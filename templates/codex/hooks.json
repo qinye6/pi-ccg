@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.codex/hooks/ccg-workflow.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

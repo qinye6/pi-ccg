@@ -1,0 +1,20 @@
+{
+  "_ccg_note": "仅在你自行管理记忆服务时，把此示例复制为 .pi/mcp.json。请填入自己的绝对路径或 endpoint。不要提交真实凭据。",
+  "mcpServers": {
+    "nocturne_memory": {
+      "command": "python",
+      "args": ["<abs>/backend/mcp_server.py"]
+    }
+  },
+  "_ccg_sse_example": {
+    "note": "SSE/HTTP 形态示例：请填入自己的 host、port 与 token placeholder；真实 token 只放在用户自管的 mcp.json。",
+    "mcpServers": {
+      "nocturne_memory": {
+        "url": "http://<host>:<port>/mcp",
+        "headers": {
+          "Authorization": "Bearer <token>"
+        }
+      }
+    }
+  }
+}

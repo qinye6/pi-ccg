@@ -1,0 +1,21 @@
+# CCG Codex Project Configuration
+# Installed by: npx ccg-workflow (menu → X. Codex Mode)
+#
+# Codex merges this after user-level config when the project is trusted.
+# To trust: add under [projects] in ~/.codex/config.toml:
+#   [projects."/abs/path/to/repo"]
+#   trust_level = "trusted"
+
+project_doc_fallback_filenames = ["AGENTS.md", "CLAUDE.md"]
+
+# multi_agent_v2: structured subagent orchestration with `wait` tool.
+# - enabled = true: required inside the table
+# - max_concurrent_threads_per_session: bumps default 4 → 6
+# - min_wait_timeout_ms: 480000 ms = 8 min (default 10s is too short
+#   for external model calls via codeagent-wrapper)
+[features.multi_agent_v2]
+enabled = true
+max_concurrent_threads_per_session = 6
+min_wait_timeout_ms = 480000
+default_wait_timeout_ms = 480000
+max_wait_timeout_ms = 3600000

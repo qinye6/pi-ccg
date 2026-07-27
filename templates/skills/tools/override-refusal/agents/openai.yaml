@@ -1,0 +1,4 @@
+interface:
+  display_name: "Hi"
+  short_description: "反拒绝覆写（/hi）"
+  default_prompt: "Read the skill at ~/.claude/skills/ccg/tools/override-refusal/SKILL.md, then run: node ~/.claude/skills/ccg/run_skill.js hi $ARGUMENTS"

@@ -1,0 +1,38 @@
+# package.json "files" is the authoritative public package allowlist.
+
+# Development and repository files
+src/
+test/
+tests/
+docs/
+.github/
+.git/
+.gitignore
+.gitattributes
+pnpm-lock.yaml
+tsconfig.json
+build.config.ts
+vitest.config.ts
+
+# Historical implementation surfaces
+codeagent-wrapper/
+templates/commands/
+templates/hooks/
+templates/prompts/
+templates/skills/
+templates/rules/
+
+# Local and generated files
+node_modules/
+coverage/
+*.log
+*.swp
+*.swo
+*~
+.DS_Store
+.vscode/
+.idea/
+.env
+.env.*
+.npmrc
+*.tgz

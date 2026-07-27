@@ -1,0 +1,88 @@
+{
+  "name": "pi-ccg",
+  "version": "3.2.4",
+  "description": "Pi CLI workflow with bounded dynamic subagents, role-specific models, automated testing, and targeted review loops",
+  "type": "module",
+  "packageManager": "pnpm@10.17.1",
+  "author": {
+    "name": "CCG Contributors"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fengshao1227/pi-ccg.git"
+  },
+  "homepage": "https://fengshao1227.github.io/pi-ccg/",
+  "bugs": {
+    "url": "https://github.com/fengshao1227/pi-ccg/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "pi",
+    "pi-cli",
+    "subagents",
+    "ai-agents",
+    "multi-agent",
+    "orchestration",
+    "cli",
+    "workflow"
+  ],
+  "bin": {
+    "pi-ccg": "bin/ccg.mjs",
+    "ccg": "bin/ccg.mjs"
+  },
+  "main": "dist/index.mjs",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.mts",
+  "files": [
+    "bin/ccg.mjs",
+    "dist",
+    "templates/pi/"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "build": "unbuild",
+    "start": "node bin/ccg.mjs",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm typecheck && pnpm test && pnpm build",
+    "test": "vitest run",
+    "lint": "eslint",
+    "lint:fix": "eslint --fix",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
+  },
+  "dependencies": {
+    "ansis": "^4.1.0",
+    "cac": "^6.7.14",
+    "fs-extra": "^11.3.2",
+    "i18next": "^25.5.2",
+    "i18next-fs-backend": "^2.6.0",
+    "inquirer": "^12.9.6",
+    "ora": "^9.0.0",
+    "pathe": "^2.0.3",
+    "smol-toml": "^1.4.2"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
+  "devDependencies": {
+    "@antfu/eslint-config": "^5.4.1",
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^3.2.7",
+    "eslint": "^9.36.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "unbuild": "^3.6.1",
+    "vitepress": "^1.6.4",
+    "vitest": "^3.1.1"
+  }
+}

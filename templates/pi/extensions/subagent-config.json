@@ -1,0 +1,9 @@
+{
+  "globalConcurrencyLimit": {{GLOBAL_CONCURRENCY_LIMIT}},
+  "maxSubagentSpawnsPerSession": {{MAX_SPAWNS_PER_SESSION}},
+  "maxSubagentDepth": {{MAX_SUBAGENT_DEPTH}},
+  "parallel": {
+    "concurrency": {{GLOBAL_CONCURRENCY_LIMIT}},
+    "maxTasks": {{DEV_AGENT_CAP}}
+  }
+}

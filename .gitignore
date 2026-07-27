@@ -1,0 +1,74 @@
+# Build outputs
+codeagent-wrapper/codeagent-wrapper
+codeagent-wrapper/*.exe
+*.exe
+dist/
+
+# Pre-compiled binaries (hosted on GitHub Release, not tracked in git)
+bin/codeagent-wrapper-*
+node_modules/
+
+# Python
+__pycache__/
+*.pyc
+
+# Logs
+*.log
+install.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Backup files
+*.backup
+*.bak
+
+# Local drafts (论坛帖子草稿)
+POST_DRAFT.md
+POST_OPENSPEC.md
+linux-do-post-update.md
+
+# Local tools cache
+.ace-tool/
+.agents/
+.claude/
+.magi/
+.ccg/
+.codegraph/
+
+# Credentials and local environment
+.npmrc
+.env
+.env.*
+!.env.example
+.pi/mcp.json
+
+# Lock files
+# pnpm-lock.yaml is committed for CI reproducibility
+
+# Test directories
+ceshi/
+
+# Local spec workflows (OpenSpec 本地数据)
+.spec-workflow/
+openspec/
+/AGENTS.md
+
+WINDOWS_FIX.md
+
+# Temp verification/notes
+verify-*.sh
+FINAL_VERIFICATION.md
+*_FIX.md
+*_REFERENCE.md
+
+# Old package tarballs
+*.tgz
+coverage/
