@@ -11,7 +11,7 @@ Requirements:
 - Pi CLI for end-to-end installation checks
 
 ```bash
-git clone https://github.com/fengshao1227/pi-ccg.git
+git clone https://github.com/qinye6/pi-ccg.git
 cd pi-ccg
 pnpm install
 ```

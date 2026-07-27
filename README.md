@@ -1,8 +1,8 @@
 # pi-ccg — CCG for Pi CLI
 
 [![npm](https://img.shields.io/npm/v/pi-ccg)](https://www.npmjs.com/package/pi-ccg)
-[![CI](https://github.com/fengshao1227/pi-ccg/actions/workflows/ci.yml/badge.svg)](https://github.com/fengshao1227/pi-ccg/actions/workflows/ci.yml)
-[![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://fengshao1227.github.io/pi-ccg/)
+[![CI](https://github.com/qinye6/pi-ccg/actions/workflows/ci.yml/badge.svg)](https://github.com/qinye6/pi-ccg/actions/workflows/ci.yml)
+[![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://qinye6.github.io/pi-ccg/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 
 CCG turns Pi CLI into a bounded multi-agent development supervisor. Pi remains the only controller: it inspects the project, plans component ownership, launches the necessary intelligent builders, runs tests and review, and routes failures back to the builder that owns the affected component.

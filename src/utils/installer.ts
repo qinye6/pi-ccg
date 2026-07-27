@@ -143,7 +143,7 @@ export interface PiInstallContext extends PiModelOverrides {
 // Binary download
 // ═══════════════════════════════════════════════════════
 
-const GITHUB_REPO = 'fengshao1227/pi-ccg'
+const GITHUB_REPO = 'qinye6/pi-ccg'
 const RELEASE_TAG = 'preset'
 
 /** Download sources: R2 CDN first (China-friendly) → GitHub fallback (global) */

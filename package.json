@@ -10,11 +10,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fengshao1227/pi-ccg.git"
+    "url": "git+https://github.com/qinye6/pi-ccg.git"
   },
-  "homepage": "https://fengshao1227.github.io/pi-ccg/",
+  "homepage": "https://qinye6.github.io/pi-ccg/",
   "bugs": {
-    "url": "https://github.com/fengshao1227/pi-ccg/issues"
+    "url": "https://github.com/qinye6/pi-ccg/issues"
   },
   "engines": {
     "node": ">=20"

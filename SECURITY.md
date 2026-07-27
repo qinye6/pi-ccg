@@ -16,7 +16,7 @@ Historical Claude/Codex/Gemini wrapper, hook, binary, and legacy template implem
 
 Please use GitHub private vulnerability reporting:
 
-<https://github.com/fengshao1227/pi-ccg/security/advisories/new>
+<https://github.com/qinye6/pi-ccg/security/advisories/new>
 
 If private reporting is unavailable, open a minimal issue that contains no exploit details, credentials, or sensitive user data and request a private contact channel.
 

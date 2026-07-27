@@ -9,7 +9,7 @@ export default defineConfig({
     nav: [
       { text: 'Guide', link: '/guide/installation' },
       { text: 'Reference', link: '/reference/cli' },
-      { text: 'GitHub', link: 'https://github.com/fengshao1227/pi-ccg' },
+      { text: 'GitHub', link: 'https://github.com/qinye6/pi-ccg' },
       { text: 'npm', link: 'https://www.npmjs.com/package/pi-ccg' },
     ],
     sidebar: [
@@ -31,7 +31,7 @@ export default defineConfig({
       },
     ],
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/fengshao1227/pi-ccg' },
+      { icon: 'github', link: 'https://github.com/qinye6/pi-ccg' },
     ],
     search: { provider: 'local' },
     footer: {

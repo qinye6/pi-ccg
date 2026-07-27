@@ -1,8 +1,8 @@
 # pi-ccg — CCG for Pi CLI
 
 [![npm](https://img.shields.io/npm/v/pi-ccg)](https://www.npmjs.com/package/pi-ccg)
-[![CI](https://github.com/fengshao1227/pi-ccg/actions/workflows/ci.yml/badge.svg)](https://github.com/fengshao1227/pi-ccg/actions/workflows/ci.yml)
-[![文档](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://fengshao1227.github.io/pi-ccg/)
+[![CI](https://github.com/qinye6/pi-ccg/actions/workflows/ci.yml/badge.svg)](https://github.com/qinye6/pi-ccg/actions/workflows/ci.yml)
+[![文档](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://qinye6.github.io/pi-ccg/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 
 CCG 将 Pi CLI 改造成一个有边界的多智能体开发主控。Pi 是唯一 supervisor：它负责识别项目组件、规划文件归属、按需派生智能 builder、自动测试与审查，并把失败按组件定向回派给原负责人。

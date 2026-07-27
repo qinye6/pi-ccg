@@ -42,7 +42,7 @@ function findPackageRoot(startDir: string): string {
     + `  Start dir: ${startDir}\n`
     + `  Last checked: ${dir}\n`
     + `  This will cause Pi agents, chains, prompts, and project templates to not be installed.\n`
-    + `  Please report this issue at: https://github.com/fengshao1227/pi-ccg/issues`,
+    + `  Please report this issue at: https://github.com/qinye6/pi-ccg/issues`,
   )
   return startDir
 }
