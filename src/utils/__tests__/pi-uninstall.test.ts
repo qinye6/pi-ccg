@@ -5,6 +5,15 @@ import { join } from 'pathe'
 import { uninstallPiWorkflow } from '../installer'
 import { CCG_MANAGED_BLOCK_END, CCG_MANAGED_BLOCK_START } from '../pi-paths'
 
+const mockHome = vi.hoisted(() => ({
+  path: `/tmp/ccg-pi-uninstall-home-${process.pid}`,
+}))
+
+vi.mock('node:os', async () => {
+  const actual = await vi.importActual<typeof import('node:os')>('node:os')
+  return { ...actual, homedir: () => mockHome.path }
+})
+
 const runtime = vi.hoisted(() => ({
   inspectPiRuntime: vi.fn(),
   runPiPackageCommand: vi.fn(),
@@ -25,7 +34,8 @@ async function sandbox(name: string): Promise<{ piHome: string, projectDir: stri
   return { piHome, projectDir }
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  await fs.remove(mockHome.path)
   runtime.runPiPackageCommand.mockReset()
   runtime.runPiPackageCommand.mockResolvedValue({
     success: true,
@@ -39,6 +49,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   if (root) await fs.remove(root)
+  await fs.remove(mockHome.path)
   root = null
 })
 
@@ -71,6 +82,12 @@ describe('uninstallPiWorkflow', () => {
     })
     await fs.writeJson(join(piHome, 'models.json'), {
       providers: { private: { apiKey: '[密钥]', models: [] } },
+    })
+    const webSearchConfig = join(mockHome.path, '.pi', 'web-search.json')
+    await fs.ensureDir(join(mockHome.path, '.pi'))
+    await fs.writeJson(webSearchConfig, {
+      workflow: 'custom-user-workflow',
+      apiKey: '[密钥]',
     })
     await fs.writeJson(join(piHome, 'extensions', 'subagent', 'config.json'), {
       userKey: true,
@@ -112,6 +129,10 @@ describe('uninstallPiWorkflow', () => {
     expect(await fs.readJson(join(projectDir, '.pi', 'mcp.json'))).toEqual({ token: '[密钥]' })
     expect(await fs.readJson(join(piHome, 'models.json'))).toEqual({
       providers: { private: { apiKey: '[密钥]', models: [] } },
+    })
+    expect(await fs.readJson(webSearchConfig)).toEqual({
+      workflow: 'custom-user-workflow',
+      apiKey: '[密钥]',
     })
     expect(await fs.readFile(join(projectDir, 'AGENTS.md'), 'utf-8')).toBe('before\nafter\n')
     expect(await fs.readJson(join(piHome, 'settings.json'))).toEqual({

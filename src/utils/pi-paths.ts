@@ -34,6 +34,11 @@ export function getPiAgentHome(): string {
   return join(homedir(), '.pi', 'agent')
 }
 
+/** Pi web-search extension config ~/.pi/web-search.json (intentionally independent from Pi agent home overrides). */
+export function getPiWebSearchConfigPath(): string {
+  return join(homedir(), '.pi', 'web-search.json')
+}
+
 /** Pi 全局设置 <piHome>/settings.json（仅深合并 subagents 命名空间） */
 export function getPiSettingsPath(piHome = getPiAgentHome()): string {
   return join(piHome, 'settings.json')

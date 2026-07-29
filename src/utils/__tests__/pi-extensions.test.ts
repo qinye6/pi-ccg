@@ -11,6 +11,7 @@ vi.mock('../pi-runtime', () => runtime)
 const {
   applyPiExtensionSelection,
   buildPiExtensionSelectionStates,
+  planPiExtensionExecution,
   planPiExtensionPackageOperations,
   presentPiExtensionChoice,
   presentPiExtensionSecurityNotes,
@@ -165,6 +166,33 @@ describe('applyPiExtensionSelection', () => {
     })
   })
 
+  it('plans web-access package and safe config together', () => {
+    const states = buildPiExtensionSelectionStates({
+      runtime: {
+        piAvailable: true,
+        piVersion: 'pi 1.0.0',
+        piSubagentsAvailable: true,
+        packages: [{ packageSpec: 'npm:pi-subagents', version: '0.37.0' }],
+        packageListError: null,
+      },
+      selectedIds: ['web-access'],
+      installRequiredPackage: false,
+    })
+    expect(planPiExtensionExecution({
+      states,
+      webSearchConfig: { status: 'missing', path: '/home/user/.pi/web-search.json' },
+    })).toEqual({
+      packages: [{ action: 'install', packageSpec: 'npm:pi-web-access', id: 'web-access' }],
+      configs: [{
+        extensionId: 'web-access',
+        action: 'create',
+        path: '/home/user/.pi/web-search.json',
+        field: 'workflow',
+        value: 'none',
+      }],
+    })
+  })
+
   it('never plans required runtime removal', () => {
     const previous = [
       {
@@ -205,6 +233,61 @@ describe('applyPiExtensionSelection', () => {
     ])
   })
 
+  it('retries removal for a deselected CCG-owned package after an earlier failure', () => {
+    const previous = [{
+      id: 'mcp-adapter',
+      packageSpec: 'npm:pi-mcp-adapter' as const,
+      selected: false,
+      ownership: 'ccg-installed' as const,
+      installedAt: '2026-07-28T00:00:00.000Z',
+      updatedAt: '2026-07-30T00:00:00.000Z',
+    }]
+    const states = buildPiExtensionSelectionStates({
+      runtime: {
+        piAvailable: true,
+        piVersion: 'pi 1.0.0',
+        piSubagentsAvailable: true,
+        packages: [
+          { packageSpec: 'npm:pi-subagents', version: '0.37.0' },
+          { packageSpec: 'npm:pi-mcp-adapter', version: '0.20.0' },
+        ],
+        packageListError: null,
+      },
+      previous,
+      selectedIds: [],
+      installRequiredPackage: false,
+    })
+
+    expect(planPiExtensionPackageOperations({ previous, states })).toEqual([
+      { action: 'remove', packageSpec: 'npm:pi-mcp-adapter', id: 'mcp-adapter' },
+    ])
+  })
+
+  it('drops stale CCG-owned metadata without removing an already absent package', () => {
+    const previous = [{
+      id: 'mcp-adapter',
+      packageSpec: 'npm:pi-mcp-adapter' as const,
+      selected: false,
+      ownership: 'ccg-installed' as const,
+      installedAt: '2026-07-28T00:00:00.000Z',
+      updatedAt: '2026-07-30T00:00:00.000Z',
+    }]
+    const states = buildPiExtensionSelectionStates({
+      runtime: {
+        piAvailable: true,
+        piVersion: 'pi 1.0.0',
+        piSubagentsAvailable: true,
+        packages: [{ packageSpec: 'npm:pi-subagents', version: '0.37.0' }],
+        packageListError: null,
+      },
+      previous,
+      selectedIds: [],
+      installRequiredPackage: false,
+    })
+
+    expect(planPiExtensionPackageOperations({ previous, states })).toEqual([])
+  })
+
   it('never plans removal for legacy protected runtime package metadata', () => {
     const previous = [
       {
@@ -230,6 +313,32 @@ describe('applyPiExtensionSelection', () => {
     })
 
     expect(planPiExtensionPackageOperations({ previous, states })).toEqual([])
+  })
+
+  it('cleans stale deselected metadata when the CCG-owned package is already absent', async () => {
+    runtime.inspectPiRuntime.mockReturnValue({
+      piAvailable: true,
+      piVersion: 'pi 1.0.0',
+      piSubagentsAvailable: true,
+      packages: [{ packageSpec: 'npm:pi-subagents', version: '0.37.0' }],
+      packageListError: null,
+    })
+
+    const result = await applyPiExtensionSelection({
+      selectedIds: [],
+      installRequiredPackage: false,
+      previous: [{
+        id: 'mcp-adapter',
+        packageSpec: 'npm:pi-mcp-adapter',
+        selected: false,
+        ownership: 'ccg-installed',
+        installedAt: '2026-07-28T00:00:00.000Z',
+        updatedAt: '2026-07-30T00:00:00.000Z',
+      }],
+    })
+
+    expect(result.entries.some(entry => entry.id === 'mcp-adapter')).toBe(false)
+    expect(runtime.runPiPackageCommand).not.toHaveBeenCalled()
   })
 
   it('adopts packages that were installed outside CCG', async () => {

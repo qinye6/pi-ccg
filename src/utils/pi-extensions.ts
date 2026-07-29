@@ -5,6 +5,8 @@ import type {
 } from '../types'
 import { i18n } from '../i18n'
 import type { PiRuntimeInspection } from './pi-runtime'
+import type { PiExtensionConfigOperation, PiJsonInspection } from './pi-extension-config'
+import { planPiWebSearchConfigOperation } from './pi-extension-config'
 import { inspectPiRuntime, runPiPackageCommand } from './pi-runtime'
 
 export const PI_EXTENSION_CATALOG = [
@@ -55,6 +57,78 @@ export const PI_EXTENSION_CATALOG = [
     tier: 'experimental',
     defaultSelected: false,
     docsUrl: 'https://github.com/vigolium/piolium',
+  },
+  {
+    id: 'simplify',
+    packageSpec: 'npm:pi-simplify',
+    category: 'optimization',
+    tier: 'optional',
+    defaultSelected: false,
+    docsUrl: 'https://www.npmjs.com/package/pi-simplify',
+  },
+  {
+    id: 'rtk-optimizer',
+    packageSpec: 'npm:pi-rtk-optimizer',
+    category: 'optimization',
+    tier: 'optional',
+    defaultSelected: false,
+    docsUrl: 'https://www.npmjs.com/package/pi-rtk-optimizer',
+  },
+  {
+    id: 'statusline',
+    packageSpec: 'npm:pi-statusline',
+    category: 'ui',
+    tier: 'optional',
+    defaultSelected: false,
+    docsUrl: 'https://www.npmjs.com/package/pi-statusline',
+  },
+  {
+    id: 'todo',
+    packageSpec: 'npm:@juicesharp/rpiv-todo',
+    category: 'productivity',
+    tier: 'optional',
+    defaultSelected: false,
+    docsUrl: 'https://www.npmjs.com/package/@juicesharp/rpiv-todo',
+  },
+  {
+    id: 'ask-user-question',
+    packageSpec: 'npm:@juicesharp/rpiv-ask-user-question',
+    category: 'productivity',
+    tier: 'optional',
+    defaultSelected: false,
+    docsUrl: 'https://www.npmjs.com/package/@juicesharp/rpiv-ask-user-question',
+  },
+  {
+    id: 'plan-mode',
+    packageSpec: 'npm:@narumitw/pi-plan-mode',
+    category: 'planning',
+    tier: 'optional',
+    defaultSelected: false,
+    docsUrl: 'https://www.npmjs.com/package/@narumitw/pi-plan-mode',
+  },
+  {
+    id: 'web-access',
+    packageSpec: 'npm:pi-web-access',
+    category: 'search',
+    tier: 'optional',
+    defaultSelected: false,
+    docsUrl: 'https://www.npmjs.com/package/pi-web-access',
+  },
+  {
+    id: 'hashline-edit-pro',
+    packageSpec: 'npm:pi-hashline-edit-pro',
+    category: 'editing',
+    tier: 'optional',
+    defaultSelected: false,
+    docsUrl: 'https://www.npmjs.com/package/pi-hashline-edit-pro',
+  },
+  {
+    id: 'fff',
+    packageSpec: 'npm:pi-fff',
+    category: 'productivity',
+    tier: 'optional',
+    defaultSelected: false,
+    docsUrl: 'https://www.npmjs.com/package/pi-fff',
   },
 ] as const satisfies readonly PiExtensionDefinition[]
 
@@ -261,9 +335,9 @@ export function planPiExtensionPackageOperations(options: {
   }
 
   for (const entry of options.previous ?? []) {
-    if (isProtectedRuntimeEntry(entry) || entry.ownership !== 'ccg-installed' || !entry.selected) continue
+    if (isProtectedRuntimeEntry(entry) || entry.ownership !== 'ccg-installed') continue
     const state = statesById.get(entry.id)
-    if (state?.checked) continue
+    if (!state?.installed || state.checked) continue
     operations.push({
       action: 'remove',
       packageSpec: entry.packageSpec,
@@ -272,6 +346,24 @@ export function planPiExtensionPackageOperations(options: {
   }
 
   return operations
+}
+
+export interface PiExtensionExecutionPlan {
+  packages: PiExtensionPackageOperation[]
+  configs: PiExtensionConfigOperation[]
+}
+
+export function planPiExtensionExecution(options: {
+  previous?: readonly PiExtensionMetadataEntry[]
+  states: readonly PiExtensionSelectionState[]
+  webSearchConfig?: PiJsonInspection
+}): PiExtensionExecutionPlan {
+  const packages = planPiExtensionPackageOperations(options)
+  const webAccessSelected = options.states.some(state => state.extension.id === 'web-access' && state.checked)
+  const webOperation = webAccessSelected && options.webSearchConfig
+    ? planPiWebSearchConfigOperation(options.webSearchConfig)
+    : null
+  return { packages, configs: webOperation ? [webOperation] : [] }
 }
 
 export function presentPiExtensionOperation(operation: PiExtensionPackageOperation): string {

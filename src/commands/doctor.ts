@@ -12,12 +12,14 @@ import {
   getPiAgentHome,
   getPiModelsPath,
   getPiSettingsPath,
+  getPiWebSearchConfigPath,
   getProjectAgentsMdPath,
   getProjectPiChainsDir,
   getProjectPiPromptsDir,
   getSubagentExtensionConfigPath,
 } from '../utils/pi-paths'
-import { computeEffectiveDevParallelism, computeRequiredSpawns } from '../utils/pi-config'
+import { computeEffectiveDevParallelism, computeRequiredSpawns, inspectPiModels } from '../utils/pi-config'
+import { inspectPiWebSearchConfig } from '../utils/pi-extension-config'
 import {
   PI_EXTENSION_CATALOG,
   presentPiExtensionLabel,
@@ -117,6 +119,23 @@ function configuredModels(models: Record<string, unknown> | null): Set<string> {
     }
   }
   return result
+}
+
+function incompleteModelCapabilities(models: Record<string, unknown> | null): number {
+  const providers = models?.providers
+  if (typeof providers !== 'object' || providers === null || Array.isArray(providers)) return 0
+  let incomplete = 0
+  for (const provider of Object.values(providers)) {
+    if (typeof provider !== 'object' || provider === null || Array.isArray(provider)) continue
+    const list = (provider as Record<string, unknown>).models
+    if (!Array.isArray(list)) continue
+    for (const model of list) {
+      if (typeof model !== 'object' || model === null || Array.isArray(model)) continue
+      const value = model as Record<string, unknown>
+      if (!Number.isInteger(value.contextWindow) || !Number.isInteger(value.maxTokens)) incomplete += 1
+    }
+  }
+  return incomplete
 }
 
 function metadataLanguage(metadata: Record<string, unknown> | null): 'zh-CN' | 'en' {
@@ -254,14 +273,34 @@ async function collectChecks(options: DoctorOptions = {}): Promise<Check[]> {
     detail: references.length > 0 ? `${references.length} agent override(s)` : 'agents inherit Pi default model',
   })
 
-  const models = configuredModels(await readJson(getPiModelsPath(piHome)))
+  const modelsPath = getPiModelsPath(piHome)
+  const modelsInspection = await inspectPiModels(modelsPath)
+  const modelsData = modelsInspection.status === 'valid' ? modelsInspection.data as Record<string, unknown> : null
+  const models = configuredModels(modelsData)
   const unresolved = references.filter(reference => reference.includes('/') && !models.has(reference))
+  checks.push({
+    label: 'Provider models.json',
+    status: modelsInspection.status === 'invalid' ? FAIL : modelsInspection.status === 'missing' ? SKIP : OK,
+    detail: modelsInspection.status === 'invalid'
+      ? 'invalid JSON; CCG will not overwrite it'
+      : modelsInspection.status === 'missing'
+        ? 'not configured; Pi built-in providers remain available'
+        : `${modelsInspection.providers.length} custom/overridden provider(s), ${modelsInspection.models.length} custom model(s)`,
+  })
   checks.push({
     label: 'Model references',
     status: unresolved.length === 0 ? OK : WARN,
     detail: unresolved.length === 0
       ? 'resolved or delegated to Pi built-ins'
       : `${unresolved.length} reference(s) not found in models.json`,
+  })
+
+  checks.push({
+    label: 'Model capabilities',
+    status: incompleteModelCapabilities(modelsData) === 0 ? OK : WARN,
+    detail: incompleteModelCapabilities(modelsData) === 0
+      ? 'configured custom models include context/output limits'
+      : `${incompleteModelCapabilities(modelsData)} custom model(s) rely on Pi defaults; verify and configure exact capabilities`,
   })
 
   const caps = await readJson(getSubagentExtensionConfigPath(piHome))
@@ -330,6 +369,23 @@ async function collectChecks(options: DoctorOptions = {}): Promise<Check[]> {
         : `adapter installed; configure a user-managed MCP file${mcpExample ? ' (example available)' : ''}`
       : 'adapter not installed; manage with `ccg extensions`',
   })
+  const webAccessSelected = extensionEntries.get('web-access')?.selected === true
+  if (webAccessSelected || installedPackages.has('npm:pi-web-access')) {
+    const webConfig = await inspectPiWebSearchConfig(getPiWebSearchConfigPath())
+    checks.push({
+      label: 'pi-web-access config',
+      status: webConfig.status === 'invalid' ? WARN : webConfig.status === 'missing' ? WARN : OK,
+      detail: webConfig.status === 'invalid'
+        ? 'invalid JSON; preserved without overwrite'
+        : webConfig.status === 'missing'
+          ? 'missing; select and confirm web-access config through `ccg extensions`'
+          : webConfig.value.workflow === 'none'
+            ? 'safe workflow recommendation is active'
+            : webConfig.value.workflow === undefined
+              ? 'workflow is unset; CCG can add the safe recommendation after confirmation'
+              : 'custom workflow preserved',
+    })
+  }
   return checks
 }
 
@@ -355,12 +411,28 @@ export async function status(options: DoctorOptions = {}): Promise<void> {
   const selectedInstalled = selected.filter(entry => installed.has(entry.packageSpec)).length
   const owned = entries.filter(entry => entry.ownership === 'ccg-installed').length
   const adopted = entries.filter(entry => entry.ownership === 'adopted').length
+  const modelsInspection = await inspectPiModels(getPiModelsPath(piHome))
+  const webAccessEnabled = entries.some(entry => entry.id === 'web-access' && entry.selected)
+    || installed.has('npm:pi-web-access')
+  const webConfig = webAccessEnabled
+    ? await inspectPiWebSearchConfig(getPiWebSearchConfigPath())
+    : null
   console.log(ansis.cyan.bold(`\n  CCG for Pi CLI v${packageVersion}\n`))
   console.log(`  Pi CLI:       ${runtime.piVersion ?? 'not found'}`)
   console.log(`  pi-subagents: ${runtime.piSubagentsAvailable ? 'installed' : 'missing (required)'}`)
   console.log(`  Extensions:   ${selectedInstalled}/${selected.length} selected installed; owned=${owned}, adopted=${adopted}`)
   console.log(`  Install scope:${metadata ? ` ${String(metadata.scope ?? 'unknown')}` : ' not installed'}`)
   console.log(`  Agent models: ${modelReferences(settings).length || 'inherit default'}`)
+  console.log(`  Provider file:${modelsInspection.status === 'valid' ? ` valid (${modelsInspection.providers.length} provider(s))` : ` ${modelsInspection.status}`}`)
+  if (webConfig) {
+    console.log(`  Web access:   ${webConfig.status === 'valid'
+      ? webConfig.value.workflow === 'none'
+        ? 'workflow=none'
+        : webConfig.value.workflow === undefined
+          ? 'workflow unset'
+          : 'custom workflow preserved'
+      : webConfig.status}`)
+  }
   console.log(`  Health:       ${checks.filter(check => check.required && check.status === FAIL).length === 0 ? 'ready' : 'needs attention'}`)
   console.log(`  Pi home:      ${piHome}`)
   console.log()

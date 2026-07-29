@@ -183,6 +183,63 @@ describe('doctor retired Pi agent handling', () => {
     }))
   })
 
+  it('reports invalid provider and web config without exposing values', async () => {
+    const piHome = join(mockHome.path, '.pi', 'agent')
+    await fs.writeFile(join(piHome, 'models.json'), '{invalid', 'utf-8')
+    await fs.writeJson(join(piHome, 'ccg-workflow.json'), {
+      language: 'en',
+      scope: 'user',
+      extensions: [{
+        id: 'web-access',
+        packageSpec: 'npm:pi-web-access',
+        selected: true,
+        ownership: 'adopted',
+        updatedAt: '2026-07-29T00:00:00.000Z',
+      }],
+    })
+    await fs.ensureDir(join(mockHome.path, '.pi'))
+    await fs.writeFile(join(mockHome.path, '.pi', 'web-search.json'), '{private-secret', 'utf-8')
+    spawnSync.mockImplementation((_command: string, args: string[]) => args[0] === '--version'
+      ? { status: 0, stdout: 'pi 1.0.0\n', stderr: '' }
+      : { status: 0, stdout: 'Packages:\n  npm:pi-subagents@0.37.0\n  npm:pi-web-access@1.0.0\n', stderr: '' })
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await doctor()
+    await status()
+
+    const output = log.mock.calls.map(args => args.join(' ')).join('\n')
+    expect(output).toContain('Provider models.json')
+    expect(output).toContain('Provider file: invalid')
+    expect(output).toContain('invalid JSON; CCG will not overwrite it')
+    expect(output).toContain('pi-web-access config')
+    expect(output).toContain('Web access:   invalid')
+    expect(output).toContain('invalid JSON; preserved without overwrite')
+    expect(output).not.toContain('private-secret')
+  })
+
+  it('warns when custom models omit verified context or output limits', async () => {
+    const piHome = join(mockHome.path, '.pi', 'agent')
+    await fs.writeJson(join(piHome, 'models.json'), {
+      providers: {
+        custom: {
+          apiKey: '$CUSTOM_API_KEY',
+          models: [
+            { id: 'complete', contextWindow: 100000, maxTokens: 8192 },
+            { id: 'incomplete', contextWindow: 100000 },
+          ],
+        },
+      },
+    })
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await doctor()
+
+    const output = log.mock.calls.map(args => args.join(' ')).join('\n')
+    expect(output).toContain('Model capabilities')
+    expect(output).toContain('1 custom model(s) rely on Pi defaults')
+    expect(output).not.toContain('$CUSTOM_API_KEY')
+  })
+
   it('uses user-level chain and prompt paths for user-only metadata', async () => {
     const piHome = join(mockHome.path, '.pi', 'agent')
     await fs.ensureDir(join(piHome, 'chains'))

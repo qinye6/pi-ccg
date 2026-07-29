@@ -18,7 +18,7 @@ pi install npm:pi-subagents
 npx pi-ccg init
 ```
 
-The eleven-stage installer configures language, environment, extensions, scope, providers, model routing, concurrency limits, entry mode, and the final summary. The extension stage displays every third-party package, tier, purpose, and execution warning. Recommended packages may be checked by default, and the missing required runtime is also checked by default, but nothing is installed until the user confirms the summary and the package-operation confirmation.
+The eleven-stage installer configures language, environment, extensions, scope, providers, model routing, concurrency limits, entry mode, and the final summary. If no usable provider/model is available, the provider stage offers a custom-provider path that accepts only an API-key environment-variable reference. Exact verified model IDs can receive capability defaults; unknown model limits are never guessed. Recommended packages may be checked by default, and the missing required runtime is also checked by default, but no package or managed config operation runs until final confirmation.
 
 After installation:
 
@@ -38,6 +38,17 @@ The npm package also exposes `pi-ccg` as an executable alias.
 | Recommended | `npm:pi-session-continuity` | Durable checkpoints, handoffs, session recovery | Selected |
 | Optional | `npm:pi-pr-review` | Parallel GitHub PR review with structured findings | Not selected |
 | Experimental | `npm:@vigolium/piolium` | Multi-phase security audit with resumable state | Not selected |
+| Optional | `npm:pi-simplify` | Code simplification assistance | Not selected |
+| Optional | `npm:pi-rtk-optimizer` | Runtime/toolkit optimization | Not selected |
+| Optional | `npm:pi-statusline` | Status-line UI | Not selected |
+| Optional | `npm:@juicesharp/rpiv-todo` | Todo tracking | Not selected |
+| Optional | `npm:@juicesharp/rpiv-ask-user-question` | Structured user questions | Not selected |
+| Optional | `npm:@narumitw/pi-plan-mode` | Plan-mode workflow | Not selected |
+| Optional | `npm:pi-web-access` | Web access and safe workflow default | Not selected |
+| Optional | `npm:pi-hashline-edit-pro` | Hashline-aware editing | Not selected |
+| Optional | `npm:pi-fff` | Productivity utilities | Not selected |
+
+`pi-task` remains deferred: the unscoped npm package does not exist, and CCG will not choose among unrelated scoped packages on the user's behalf.
 
 All packages execute with the current user's permissions. Review upstream documentation before installation, especially for experimental packages.
 
@@ -68,7 +79,9 @@ Use `--no-optional-extensions` for an explicit core-only installation. The requi
 ccg extensions
 ```
 
-The manager restores previous selections, shows installed state, previews every `pi install`/`pi remove`, and asks for confirmation. Existing packages are marked `adopted` and are never removed by CCG. Packages installed by CCG are marked `ccg-installed` and may be removed when deselected or during uninstall. The required `pi-subagents` entry shares the same checkbox, but once installed or adopted it becomes read-only and is never added to a removal plan.
+The manager restores previous selections, shows installed state, previews every `pi install`/`pi remove` and managed config operation, and asks for one final confirmation. Existing packages are marked `adopted` and are never removed by CCG. Packages installed by CCG are marked `ccg-installed` and may be removed when deselected or during uninstall. The required `pi-subagents` entry shares the same checkbox, but once installed or adopted it becomes read-only and is never added to a removal plan.
+
+If `pi-web-access` is selected, the same confirmation may include creating or merging `workflow: "none"` at the fixed user-home path `~/.pi/web-search.json`. CCG changes only that field and only when it is absent: an existing workflow value is preserved, invalid/non-object JSON is rejected without overwrite, `--install-dir` does not redirect this path, and uninstall never deletes the file. The config is not written if the package installation fails.
 
 ## Update and removal
 

@@ -113,6 +113,17 @@ npx pi-ccg init
 | 推荐 | `npm:pi-session-continuity` | durable checkpoint、handoff、会话恢复 |
 | 可选 | `npm:pi-pr-review` | 并行 GitHub PR 审查与结构化 findings |
 | 实验性 | `npm:@vigolium/piolium` | 多阶段安全审计，默认不选 |
+| 可选 | `npm:pi-simplify` | 代码简化辅助 |
+| 可选 | `npm:pi-rtk-optimizer` | runtime/toolkit 优化 |
+| 可选 | `npm:pi-statusline` | Pi 状态栏 UI |
+| 可选 | `npm:@juicesharp/rpiv-todo` | Todo 跟踪 |
+| 可选 | `npm:@juicesharp/rpiv-ask-user-question` | 结构化用户提问 |
+| 可选 | `npm:@narumitw/pi-plan-mode` | Plan mode 工作流 |
+| 可选 | `npm:pi-web-access` | Web access 与安全的 workflow 默认配置 |
+| 可选 | `npm:pi-hashline-edit-pro` | Hashline-aware 编辑 |
+| 可选 | `npm:pi-fff` | Productivity 工具 |
+
+新增的九项全部默认关闭。`pi-task` 暂不列入：unscoped npm package 不存在，现有 scoped packages 又互不等价；CCG 不猜测 package identity。
 
 非交互示例：
 
@@ -140,7 +151,9 @@ fresh non-interactive install 不会静默安装 optional packages；只有 `--e
 - Review model → `ccg-reviewer`、`ccg-test-runner`
 - scout/planner 默认继承 Pi 的 `subagents.defaultModel`
 
-`--provider-file <path>` 只能用于不含真实凭据的 provider 定义。凭据不得进入 provider file、prompt、template、task、log 或 metadata。
+`--provider-file <path>` 只能用于不含真实凭据的 provider 定义。交互向导可直接创建 custom provider/model，但 API key 只接受环境变量引用，绝不要求或存储真实 key。CCG 仅对 exact、已核验 model ID 自动填充 `contextWindow` 与 `maxTokens`；未知模型必须由用户明确填写，绝不猜测。`models.json` 按 missing/valid/invalid 三态检查；invalid JSON 不覆盖；按 exact provider/model ID 合并，并保留 pricing、nested compat、sibling models 与未知用户字段。
+
+当前 exact capability presets 包括 `anthropic/claude-sonnet-5`、`anthropic/claude-fable-5`、`anthropic/claude-haiku-4-5-20251001`、`openai/gpt-5.6-sol`、`openai/gpt-5.6-terra`、`openai/gpt-5.6-luna` 和 `google/gemini-3.5-flash`。
 
 `ccg extensions` 与安装器使用同样的 required runtime 语义。若 `pi-subagents` 已安装或已被采用，它会保持勾选且只读，不会重复安装，也永远不会进入 removal plan。
 
@@ -217,7 +230,9 @@ CCG 只修改 `AGENTS.md` 中以下 marker 之间的受管块：
 
 Pi CLI 是 host runtime。`pi-subagents` 是必需 package，提供 orchestration、原生 supervisor coordination 和 per-agent persistent `memory` frontmatter。
 
-推荐 profile 增加：`pi-mcp-adapter` 的 lazy MCP/proxy，`pi-memctx` 的本地知识检索与按需注入，以及 `pi-session-continuity` 的 durable checkpoint/handoff。`pi-pr-review` 为可选；`@vigolium/piolium` 为实验性且默认不选。通过 `ccg extensions` 管理这些 packages。预先存在的 package 标记为 `adopted`；CCG 只删除自己安装并记录为 `ccg-installed` 的 package。
+推荐 profile 增加：`pi-mcp-adapter` 的 lazy MCP/proxy，`pi-memctx` 的本地知识检索与按需注入，以及 `pi-session-continuity` 的 durable checkpoint/handoff。`pi-pr-review` 为可选；`@vigolium/piolium` 为实验性且默认不选；新增 productivity/UI/editing entries 同样默认关闭。通过 `ccg extensions` 管理这些 packages。预先存在的 package 标记为 `adopted`；CCG 只删除自己安装并记录为 `ccg-installed` 的 package。
+
+选择 `pi-web-access` 时，最终 operation confirmation 还可 create/merge `~/.pi/web-search.json` 的 `workflow: "none"`。CCG 只修改缺失的 `workflow` 字段，保留 existing workflow 与 invalid JSON；`--install-dir` 不改变该固定路径，uninstall 也永不删除该文件。
 
 CCG 保持静态 prompt 前缀稳定，把运行期 plan/handoff 放在 task string 后部；lazy MCP metadata 与按需 memory 可减少上下文抖动。但实际 prompt-cache 命中仍由 provider 决定，不承诺固定命中率。
 

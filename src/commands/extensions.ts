@@ -8,7 +8,7 @@ import {
   applyPiExtensionSelection,
   buildPiExtensionSelectionStates,
   getPiExtension,
-  planPiExtensionPackageOperations,
+  planPiExtensionExecution,
   presentPiExtensionChoice,
   presentPiExtensionLabel,
   presentPiExtensionOperation,
@@ -18,6 +18,7 @@ import {
   requiredPiExtensionState,
 } from '../utils/pi-extensions'
 import { getPiAgentHome } from '../utils/pi-paths'
+import { applyPiExtensionConfigOperation, inspectPiWebSearchConfig } from '../utils/pi-extension-config'
 import { inspectPiRuntime, runPiPackageCommand } from '../utils/pi-runtime'
 
 export interface ExtensionsCommandOptions {
@@ -84,14 +85,19 @@ export async function extensions(options: ExtensionsCommandOptions = {}): Promis
     installRequiredPackage: selectedIds.includes(REQUIRED_PI_EXTENSION.id) && !runtime.piSubagentsAvailable,
   })
   const requiredState = requiredPiExtensionState(postSelectionStates)
-  const operations = planPiExtensionPackageOperations({
+  const executionPlan = planPiExtensionExecution({
     previous,
     states: postSelectionStates,
+    webSearchConfig: await inspectPiWebSearchConfig(),
   })
+  const operations = executionPlan.packages
 
-  if (operations.length > 0) {
+  if (operations.length > 0 || executionPlan.configs.length > 0) {
     console.log(ansis.cyan(`\n  ${tx('piExtensions.operations.title')}`))
     for (const operation of operations) console.log(`  - ${presentPiExtensionOperation(operation)}`)
+    for (const operation of executionPlan.configs) {
+      console.log(`  - ${operation.action} ${operation.path}: ${operation.field}=${operation.value}`)
+    }
     const { confirm } = await inquirer.prompt<{ confirm: boolean }>([{
       type: 'confirm',
       name: 'confirm',
@@ -123,6 +129,17 @@ export async function extensions(options: ExtensionsCommandOptions = {}): Promis
     previous,
   })
   errors.push(...result.errors)
+  const webAccessReady = result.entries.some(entry => entry.id === 'web-access' && entry.ownership !== 'missing')
+  if (webAccessReady) {
+    for (const operation of executionPlan.configs) {
+      try {
+        await applyPiExtensionConfigOperation(operation)
+      }
+      catch (error) {
+        errors.push(error instanceof Error ? error.message : String(error))
+      }
+    }
+  }
   await updateCcgMetadata({ extensions: [...result.entries, ...failedRemovals] }, metadataPath)
 
   if (errors.length > 0) {

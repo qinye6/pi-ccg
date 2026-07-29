@@ -33,11 +33,37 @@ export interface PiSettingsFile {
   [key: string]: unknown
 }
 
+export interface PiModelConfig {
+  id: string
+  name?: string
+  api?: string
+  baseUrl?: string
+  reasoning?: boolean
+  thinkingLevelMap?: Partial<Record<'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max', string | null>>
+  input?: ('text' | 'image')[]
+  cost?: {
+    input: number
+    output: number
+    cacheRead: number
+    cacheWrite: number
+    [key: string]: unknown
+  }
+  contextWindow?: number
+  maxTokens?: number
+  headers?: Record<string, string>
+  compat?: Record<string, unknown>
+  [key: string]: unknown
+}
+
 export interface PiProvider {
-  api: string
-  baseUrl: string
+  name?: string
+  api?: string
+  baseUrl?: string
   apiKey?: string
-  models: unknown[]
+  headers?: Record<string, string>
+  authHeader?: boolean
+  models?: (PiModelConfig | string)[]
+  modelOverrides?: Record<string, Omit<PiModelConfig, 'id'>>
   [key: string]: unknown
 }
 
@@ -45,6 +71,11 @@ export interface PiModelsFile {
   providers?: Record<string, PiProvider>
   [key: string]: unknown
 }
+
+export type PiModelsInspection
+  = | { status: 'missing', path: string, providers: string[], models: string[] }
+    | { status: 'invalid', path: string, error: string, providers: string[], models: string[] }
+    | { status: 'valid', path: string, data: PiModelsFile, providers: string[], models: string[] }
 
 export interface SubagentExtensionConfig {
   globalConcurrencyLimit?: number
@@ -244,6 +275,151 @@ export async function reconcilePiSettingsSubagents(
   if (backupPath !== null) await fs.copy(settingsPath, backupPath)
   await writeJsonAtomic(settingsPath, nextSettings)
   return { changed: true, backupPath }
+}
+
+function modelId(model: PiModelConfig | string): string | null {
+  if (typeof model === 'string') return model
+  return typeof model.id === 'string' && model.id.trim() ? model.id : null
+}
+
+export async function inspectPiModels(
+  modelsPath: string = getPiModelsPath(),
+): Promise<PiModelsInspection> {
+  if (!(await fs.pathExists(modelsPath))) {
+    return { status: 'missing', path: modelsPath, providers: [], models: [] }
+  }
+
+  let value: unknown
+  try {
+    value = await fs.readJson(modelsPath) as unknown
+  }
+  catch {
+    return { status: 'invalid', path: modelsPath, error: 'invalid JSON', providers: [], models: [] }
+  }
+  if (!isRecord(value)) {
+    return { status: 'invalid', path: modelsPath, error: 'JSON root must be an object', providers: [], models: [] }
+  }
+  if (value.providers !== undefined && !isRecord(value.providers)) {
+    return { status: 'invalid', path: modelsPath, error: 'providers must be an object', providers: [], models: [] }
+  }
+
+  const data = value as PiModelsFile
+  const providers = Object.keys(asProviders(data.providers))
+  const models = providers.flatMap((providerId) => {
+    const provider = asProviders(data.providers)[providerId]
+    return Array.isArray(provider.models)
+      ? provider.models.flatMap((model) => {
+          const id = modelId(model)
+          return id ? [`${providerId}/${id}`] : []
+        })
+      : []
+  })
+  return { status: 'valid', path: modelsPath, data, providers, models }
+}
+
+function mergeModelLists(
+  current: readonly (PiModelConfig | string)[] | undefined,
+  patch: readonly (PiModelConfig | string)[] | undefined,
+): (PiModelConfig | string)[] | undefined {
+  if (patch === undefined) return current ? [...current] : undefined
+  const next = [...(current ?? [])]
+  const positions = new Map<string, number>()
+  next.forEach((model, index) => {
+    const id = modelId(model)
+    if (id) positions.set(id, index)
+  })
+  for (const model of patch) {
+    const id = modelId(model)
+    if (!id) continue
+    const index = positions.get(id)
+    if (index === undefined) {
+      positions.set(id, next.length)
+      next.push(model)
+    }
+    else if (typeof next[index] === 'object' && typeof model === 'object') {
+      next[index] = { ...next[index] as PiModelConfig, ...model }
+    }
+    else {
+      next[index] = model
+    }
+  }
+  return next
+}
+
+function mergeRecords(
+  current: Record<string, unknown>,
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
+  const next = { ...current }
+  for (const [key, value] of Object.entries(patch)) {
+    next[key] = isRecord(next[key]) && isRecord(value)
+      ? mergeRecords(next[key], value)
+      : value
+  }
+  return next
+}
+
+function mergeProvider(current: PiProvider | undefined, patch: PiProvider): PiProvider {
+  const currentOverrides = isRecord(current?.modelOverrides) ? current.modelOverrides : {}
+  const patchOverrides = isRecord(patch.modelOverrides) ? patch.modelOverrides : {}
+  const next: PiProvider = {
+    ...(current ?? {}),
+    ...patch,
+  }
+  const models = mergeModelLists(current?.models, patch.models)
+  if (models !== undefined) next.models = models
+  if (Object.keys(currentOverrides).length > 0 || Object.keys(patchOverrides).length > 0) {
+    next.modelOverrides = { ...currentOverrides }
+    for (const [modelId, override] of Object.entries(patchOverrides)) {
+      next.modelOverrides[modelId] = mergeRecords(
+        isRecord(currentOverrides[modelId]) ? currentOverrides[modelId] : {},
+        isRecord(override) ? override : {},
+      )
+    }
+  }
+  return next
+}
+
+export async function mergePiProviders(
+  providers: Record<string, PiProvider>,
+  opts: { force?: boolean, modelsPath?: string } = {},
+): Promise<{ changed: boolean, added: string[], updated: string[], skipped: string[], backupPath: string | null }> {
+  const modelsPath = opts.modelsPath ?? getPiModelsPath()
+  const inspection = await inspectPiModels(modelsPath)
+  if (inspection.status === 'invalid') {
+    throw new Error(`Refusing to overwrite invalid models.json: ${modelsPath}`)
+  }
+
+  const data = inspection.status === 'valid' ? inspection.data : {}
+  const currentProviders = asProviders(data.providers)
+  const nextProviders = { ...currentProviders }
+  const added: string[] = []
+  const updated: string[] = []
+  const skipped: string[] = []
+
+  for (const [providerId, patch] of Object.entries(providers)) {
+    const current = currentProviders[providerId]
+    if (current === undefined) {
+      nextProviders[providerId] = patch
+      added.push(providerId)
+      continue
+    }
+    const merged = mergeProvider(current, patch)
+    if (stableJson(current) === stableJson(merged)) skipped.push(providerId)
+    else {
+      nextProviders[providerId] = merged
+      updated.push(providerId)
+    }
+  }
+
+  const nextData: PiModelsFile = { ...data, providers: nextProviders }
+  if (stableJson(data) === stableJson(nextData)) {
+    return { changed: false, added, updated, skipped, backupPath: null }
+  }
+  const backupPath = inspection.status === 'valid' && opts.force ? `${modelsPath}.ccg-bak` : null
+  if (backupPath) await fs.copy(modelsPath, backupPath)
+  await writeJsonAtomic(modelsPath, nextData)
+  return { changed: true, added, updated, skipped, backupPath }
 }
 
 export async function appendPiProviders(

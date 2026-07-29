@@ -38,12 +38,19 @@ The core runtime requires `pi-subagents`. The installer also offers explicitly c
 - `pi-session-continuity`: durable checkpoints and cross-session handoffs.
 - `pi-pr-review`: optional parallel PR review with structured findings.
 - `@vigolium/piolium`: experimental multi-phase security audit, disabled by default.
+- Default-off productivity/UI/editing options: `pi-simplify`, `pi-rtk-optimizer`, `pi-statusline`, `@juicesharp/rpiv-todo`, `@juicesharp/rpiv-ask-user-question`, `@narumitw/pi-plan-mode`, `pi-web-access`, `pi-hashline-edit-pro`, and `pi-fff`.
+
+`pi-task` is deferred because its package identity is ambiguous. CCG does not choose an unrelated scoped package automatically. `pi-web-access` may add `workflow: "none"` only when the field is absent in `~/.pi/web-search.json`; the config operation shares the final confirmation with package changes and preserves existing or invalid user configuration.
 
 Optional extensions augment but never replace the ownership, test, review, or repair contract. Without them, Pi falls back to explicit task-string context and standard CCG verification.
 
 ## Cache-friendly context management
 
 Static role instructions remain at the front; run-specific plans, handoffs, component data, and findings are appended later. Lazy MCP metadata and on-demand memory injection reduce context churn. Actual prompt-cache behavior remains provider-dependent and no fixed hit rate is guaranteed.
+
+## Provider/model readiness
+
+During installation, Pi model discovery distinguishes missing, valid, and invalid `models.json`. The wizard can add a custom provider/model using an environment-variable credential reference. Exact verified model IDs receive known capability defaults; unknown model limits are never guessed. Exact-ID recursive merges preserve user pricing, compatibility data, and unknown fields. `doctor` and `status` report provider/model and web-access configuration state without exposing values.
 
 ## Credentials and MCP
 
