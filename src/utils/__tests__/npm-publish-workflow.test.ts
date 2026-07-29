@@ -13,6 +13,8 @@ describe('npm publish workflow contract', () => {
     expect(workflow).toContain('contents: read')
     expect(workflow).toContain('environment: npm')
     expect(workflow).toContain('runs-on: ubuntu-latest')
+    expect(workflow).toContain('npm install --global npm@11.5.1')
+    expect(workflow).toContain('npm --version')
     expect(workflow).toContain('pnpm typecheck')
     expect(workflow).toContain('pnpm build')
     expect(workflow).toContain('pnpm test')
