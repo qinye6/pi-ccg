@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.2.6] - 2026-07-29
+
+### Fixed
+
+- Fully localized the Pi extension installer and `ccg extensions` interface for Chinese and English, including extension names, tiers, descriptions, security warnings, states, summaries, confirmations, and outcomes.
+- Added `pi-subagents` to the shared extension checkbox while preserving explicit final confirmation, required-runtime warnings, custom Pi home support, and `missing` ownership when installation is declined.
+- Protected the required `npm:pi-subagents` runtime from removal through extension management, uninstall, and legacy or inconsistent metadata package identifiers.
+- Made `doctor` and `status` initialize extension localization from the selected Pi home's metadata.
+
+### Changed
+
+- Migrated the npm publish workflow from a long-lived `NPM_TOKEN` to npm Trusted Publishing with GitHub Actions OIDC and provenance.
+- Excluded project-local `.pi/` runtime configuration from Git tracking.
+
+---
+
 ## [3.2.5] - 2026-07-28
 
 ### Added

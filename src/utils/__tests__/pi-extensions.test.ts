@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { initI18n } from '../../i18n'
 
 const runtime = vi.hoisted(() => ({
   inspectPiRuntime: vi.fn(),
@@ -9,9 +10,14 @@ vi.mock('../pi-runtime', () => runtime)
 
 const {
   applyPiExtensionSelection,
+  buildPiExtensionSelectionStates,
+  planPiExtensionPackageOperations,
+  presentPiExtensionChoice,
+  presentPiExtensionSecurityNotes,
   normalizePiExtensionIds,
   PI_EXTENSION_CATALOG,
   recommendedPiExtensionIds,
+  requiredPiExtensionState,
   removeCcgInstalledExtensions,
   validatePiExtensionCatalog,
 } = await import('../pi-extensions')
@@ -59,6 +65,173 @@ describe('Pi extension catalog', () => {
 })
 
 describe('applyPiExtensionSelection', () => {
+  it('localizes presenter text in zh-CN and en', async () => {
+    const runtimeState = {
+      piAvailable: true,
+      piVersion: 'pi 1.0.0',
+      piSubagentsAvailable: false,
+      packages: [],
+      packageListError: null,
+    }
+
+    await initI18n('zh-CN')
+    let states = buildPiExtensionSelectionStates({
+      runtime: runtimeState,
+      selectedIds: ['memory-context'],
+      installRequiredPackage: true,
+    })
+    expect(presentPiExtensionChoice(requiredPiExtensionState(states))).toContain('[必需]')
+    expect(presentPiExtensionChoice(states.find(state => state.extension.id === 'memory-context')!)).toContain('本地 Markdown knowledge pack')
+    expect(presentPiExtensionSecurityNotes('mcp-adapter')[1]).toContain('MCP credential')
+
+    await initI18n('en')
+    states = buildPiExtensionSelectionStates({
+      runtime: runtimeState,
+      selectedIds: ['memory-context'],
+      installRequiredPackage: true,
+    })
+    expect(presentPiExtensionChoice(requiredPiExtensionState(states))).toContain('[Required]')
+    expect(presentPiExtensionChoice(states.find(state => state.extension.id === 'memory-context')!)).toContain('Local Markdown knowledge packs')
+    expect(presentPiExtensionSecurityNotes('mcp-adapter')[1]).toContain('real MCP credentials')
+  })
+
+  it('reports required package checkbox state for missing, adopted, and CCG-installed runtimes', () => {
+    const missing = requiredPiExtensionState(buildPiExtensionSelectionStates({
+      runtime: {
+        piAvailable: true,
+        piVersion: 'pi 1.0.0',
+        piSubagentsAvailable: false,
+        packages: [],
+        packageListError: null,
+      },
+      selectedIds: [],
+      installRequiredPackage: false,
+    }))
+    expect(missing).toMatchObject({
+      checked: false,
+      disabled: false,
+      installed: false,
+      ownership: 'missing',
+      installAuthorized: false,
+      status: 'runtime-unavailable',
+    })
+
+    const adopted = requiredPiExtensionState(buildPiExtensionSelectionStates({
+      runtime: {
+        piAvailable: true,
+        piVersion: 'pi 1.0.0',
+        piSubagentsAvailable: true,
+        packages: [{ packageSpec: 'npm:pi-subagents', version: '0.37.0' }],
+        packageListError: null,
+      },
+      selectedIds: [],
+      installRequiredPackage: false,
+    }))
+    expect(adopted).toMatchObject({
+      checked: true,
+      disabled: true,
+      installed: true,
+      ownership: 'adopted',
+      installAuthorized: false,
+      status: 'adopted',
+    })
+
+    const owned = requiredPiExtensionState(buildPiExtensionSelectionStates({
+      runtime: {
+        piAvailable: true,
+        piVersion: 'pi 1.0.0',
+        piSubagentsAvailable: true,
+        packages: [{ packageSpec: 'npm:pi-subagents', version: '0.37.0' }],
+        packageListError: null,
+      },
+      previous: [{
+        id: 'core-subagents',
+        packageSpec: 'npm:pi-subagents',
+        selected: true,
+        ownership: 'ccg-installed',
+        installedAt: '2026-07-28T00:00:00.000Z',
+        updatedAt: '2026-07-28T00:00:00.000Z',
+      }],
+      selectedIds: [],
+      installRequiredPackage: false,
+    }))
+    expect(owned).toMatchObject({
+      checked: true,
+      disabled: true,
+      installed: true,
+      ownership: 'ccg-installed',
+      installAuthorized: false,
+      status: 'installed',
+    })
+  })
+
+  it('never plans required runtime removal', () => {
+    const previous = [
+      {
+        id: 'core-subagents',
+        packageSpec: 'npm:pi-subagents' as const,
+        selected: true,
+        ownership: 'ccg-installed' as const,
+        installedAt: '2026-07-28T00:00:00.000Z',
+        updatedAt: '2026-07-28T00:00:00.000Z',
+      },
+      {
+        id: 'mcp-adapter',
+        packageSpec: 'npm:pi-mcp-adapter' as const,
+        selected: true,
+        ownership: 'ccg-installed' as const,
+        installedAt: '2026-07-28T00:00:00.000Z',
+        updatedAt: '2026-07-28T00:00:00.000Z',
+      },
+    ]
+    const states = buildPiExtensionSelectionStates({
+      runtime: {
+        piAvailable: true,
+        piVersion: 'pi 1.0.0',
+        piSubagentsAvailable: true,
+        packages: [
+          { packageSpec: 'npm:pi-subagents', version: '0.37.0' },
+          { packageSpec: 'npm:pi-mcp-adapter', version: '0.20.0' },
+        ],
+        packageListError: null,
+      },
+      previous,
+      selectedIds: [],
+      installRequiredPackage: false,
+    })
+
+    expect(planPiExtensionPackageOperations({ previous, states })).toEqual([
+      { action: 'remove', packageSpec: 'npm:pi-mcp-adapter', id: 'mcp-adapter' },
+    ])
+  })
+
+  it('never plans removal for legacy protected runtime package metadata', () => {
+    const previous = [
+      {
+        id: 'legacy-core-subagents',
+        packageSpec: 'npm:pi-subagents' as const,
+        selected: true,
+        ownership: 'ccg-installed' as const,
+        installedAt: '2026-07-28T00:00:00.000Z',
+        updatedAt: '2026-07-28T00:00:00.000Z',
+      },
+    ]
+    const states = buildPiExtensionSelectionStates({
+      runtime: {
+        piAvailable: true,
+        piVersion: 'pi 1.0.0',
+        piSubagentsAvailable: true,
+        packages: [{ packageSpec: 'npm:pi-subagents', version: '0.37.0' }],
+        packageListError: null,
+      },
+      previous,
+      selectedIds: [],
+      installRequiredPackage: false,
+    })
+
+    expect(planPiExtensionPackageOperations({ previous, states })).toEqual([])
+  })
+
   it('adopts packages that were installed outside CCG', async () => {
     runtime.inspectPiRuntime.mockReturnValue({
       piAvailable: true,
@@ -170,7 +343,7 @@ describe('applyPiExtensionSelection', () => {
 })
 
 describe('removeCcgInstalledExtensions', () => {
-  it('removes only CCG-owned packages and preserves adopted packages', async () => {
+  it('preserves the required runtime and removes only optional CCG-owned packages', async () => {
     runtime.runPiPackageCommand.mockResolvedValue({
       success: true,
       command: 'pi remove npm:pi-memctx',
@@ -181,6 +354,13 @@ describe('removeCcgInstalledExtensions', () => {
     })
 
     const result = await removeCcgInstalledExtensions([
+      {
+        id: 'core-subagents',
+        packageSpec: 'npm:pi-subagents',
+        selected: true,
+        ownership: 'ccg-installed',
+        updatedAt: '2026-07-28T00:00:00.000Z',
+      },
       {
         id: 'memory-context',
         packageSpec: 'npm:pi-memctx',
@@ -201,7 +381,7 @@ describe('removeCcgInstalledExtensions', () => {
     expect(runtime.runPiPackageCommand).toHaveBeenCalledWith('remove', 'npm:pi-memctx', { piHome: '/tmp/pi-home' })
     expect(result).toEqual({
       removed: ['npm:pi-memctx'],
-      preserved: ['npm:pi-mcp-adapter'],
+      preserved: ['npm:pi-subagents', 'npm:pi-mcp-adapter'],
       errors: [],
     })
   })

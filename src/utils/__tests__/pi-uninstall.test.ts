@@ -157,6 +157,39 @@ describe('uninstallPiWorkflow', () => {
     expect(result.preserved).toContain(`${metadataPath}#extension-removal-retry`)
   })
 
+  it('preserves the required pi-subagents runtime during uninstall', async () => {
+    const { piHome, projectDir } = await sandbox('preserve-required-runtime')
+    const metadataPath = join(piHome, 'ccg-workflow.json')
+    await fs.writeJson(metadataPath, {
+      extensions: [
+        {
+          id: 'core-subagents',
+          packageSpec: 'npm:pi-subagents',
+          selected: true,
+          ownership: 'ccg-installed',
+          updatedAt: '2026-07-28T00:00:00.000Z',
+        },
+        {
+          id: 'memory-context',
+          packageSpec: 'npm:pi-memctx',
+          selected: true,
+          ownership: 'ccg-installed',
+          updatedAt: '2026-07-28T00:00:00.000Z',
+        },
+      ],
+      managedFiles: [],
+    })
+
+    const result = await uninstallPiWorkflow({ piHome, projectDir, metadataPath })
+
+    expect(result.success).toBe(true)
+    expect(runtime.runPiPackageCommand).toHaveBeenCalledOnce()
+    expect(runtime.runPiPackageCommand).toHaveBeenCalledWith('remove', 'npm:pi-memctx', { piHome })
+    expect(result.removed).toContain('npm:pi-memctx#pi-package')
+    expect(result.preserved).toContain('npm:pi-subagents#user-owned-package')
+    expect(result.removed).not.toContain('npm:pi-subagents#pi-package')
+  })
+
   it('is idempotent and conservatively preserves project settings without a manifest', async () => {
     const { piHome, projectDir } = await sandbox('idempotent')
     const projectSettings = join(projectDir, '.pi', 'settings.json')

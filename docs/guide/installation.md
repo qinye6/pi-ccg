@@ -6,7 +6,7 @@
 - npm/npx
 - Pi CLI
 
-The active workflow requires `npm:pi-subagents`. The interactive installer detects it with `pi list --no-approve` and asks before installing it when missing. You may also install it directly:
+The active workflow requires `npm:pi-subagents`. The interactive installer detects it with `pi list --no-approve`, shows it in the same checkbox list as the curated extensions, and checks it by default when missing. You may deselect it to install workflow assets only, but runtime ownership will remain `missing` until the package is installed. You may also install it directly:
 
 ```bash
 pi install npm:pi-subagents
@@ -18,7 +18,7 @@ pi install npm:pi-subagents
 npx pi-ccg init
 ```
 
-The eleven-stage installer configures language, environment, extensions, scope, providers, model routing, concurrency limits, entry mode, and the final summary. The extension stage displays every third-party package, tier, purpose, and execution warning. Recommended packages may be checked by default, but nothing is installed until the user confirms the summary.
+The eleven-stage installer configures language, environment, extensions, scope, providers, model routing, concurrency limits, entry mode, and the final summary. The extension stage displays every third-party package, tier, purpose, and execution warning. Recommended packages may be checked by default, and the missing required runtime is also checked by default, but nothing is installed until the user confirms the summary and the package-operation confirmation.
 
 After installation:
 
@@ -32,7 +32,7 @@ The npm package also exposes `pi-ccg` as an executable alias.
 
 | Tier | Package | Purpose | Interactive default |
 |---|---|---|---|
-| Required | `npm:pi-subagents` | Dynamic subagents, supervisor coordination, per-agent memory | Required |
+| Required | `npm:pi-subagents` | Dynamic subagents, supervisor coordination, per-agent memory | Checked by default when missing; read-only when already installed |
 | Recommended | `npm:pi-mcp-adapter` | Lazy MCP servers, compact proxy tool, metadata caching, output guards | Selected |
 | Recommended | `npm:pi-memctx` | Local knowledge packs, search, persistence, on-demand context injection | Selected |
 | Recommended | `npm:pi-session-continuity` | Durable checkpoints, handoffs, session recovery | Selected |
@@ -60,7 +60,7 @@ npx pi-ccg init \
   --max-subagent-depth 1
 ```
 
-Use `--no-optional-extensions` for an explicit core-only installation. Package identifiers come from the validated CCG catalog, not arbitrary shell input. Never put API keys in command arguments, provider files, templates, or metadata.
+Use `--no-optional-extensions` for an explicit core-only installation. The required runtime package still needs `--install-required-package` before CCG will execute `pi install npm:pi-subagents` non-interactively. Package identifiers come from the validated CCG catalog, not arbitrary shell input. Never put API keys in command arguments, provider files, templates, or metadata.
 
 ## Extension management
 
@@ -68,7 +68,7 @@ Use `--no-optional-extensions` for an explicit core-only installation. Package i
 ccg extensions
 ```
 
-The manager restores previous selections, shows installed state, previews every `pi install`/`pi remove`, and asks for confirmation. Existing packages are marked `adopted` and are never removed by CCG. Packages installed by CCG are marked `ccg-installed` and may be removed when deselected or during uninstall.
+The manager restores previous selections, shows installed state, previews every `pi install`/`pi remove`, and asks for confirmation. Existing packages are marked `adopted` and are never removed by CCG. Packages installed by CCG are marked `ccg-installed` and may be removed when deselected or during uninstall. The required `pi-subagents` entry shares the same checkbox, but once installed or adopted it becomes read-only and is never added to a removal plan.
 
 ## Update and removal
 
@@ -81,6 +81,10 @@ ccg uninstall
 ```
 
 Update restores saved workflow and extension choices while reinstalling only CCG-managed assets. It does not run third-party package operations or automatically add newly recommended extensions. Use `ccg extensions` for package changes.
+
+## Publishing
+
+The publish workflow uses npm Trusted Publishing with GitHub OIDC. It keeps `permissions: contents: read` and `id-token: write`, runs `pnpm typecheck`, `pnpm build`, `pnpm test`, and `npm pack --dry-run --json`, then publishes with `npm publish --access public --provenance` without repository-level npm tokens.
 
 For a custom Pi home:
 

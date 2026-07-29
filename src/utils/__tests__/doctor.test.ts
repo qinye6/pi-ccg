@@ -131,6 +131,7 @@ describe('doctor retired Pi agent handling', () => {
   })
 
   it('checks and reports a custom Pi home consistently', async () => {
+    const defaultPiHome = join(mockHome.path, '.pi', 'agent')
     const customPiHome = join(mockHome.path, 'custom-pi-home')
     await fs.ensureDir(join(customPiHome, 'agents'))
     for (const agent of ACTIVE_AGENTS) {
@@ -146,6 +147,21 @@ describe('doctor retired Pi agent handling', () => {
     await fs.writeJson(join(customPiHome, 'ccg-workflow.json'), {
       version: '3.2.5',
       scope: 'user',
+      language: 'en',
+      extensions: [
+        {
+          id: 'mcp-adapter',
+          packageSpec: 'npm:pi-mcp-adapter',
+          selected: true,
+          ownership: 'missing',
+          updatedAt: '2026-07-28T00:00:00.000Z',
+        },
+      ],
+    })
+    await fs.writeJson(join(defaultPiHome, 'ccg-workflow.json'), {
+      version: '3.2.5',
+      scope: 'user',
+      language: 'zh-CN',
       extensions: [],
     })
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -154,8 +170,14 @@ describe('doctor retired Pi agent handling', () => {
     await status({ installDir: customPiHome })
 
     const output = log.mock.calls.map(args => args.join(' ')).join('\n')
+    expect(output).toContain('Memory Context')
+    expect(output).toContain('not selected [Recommended]')
+    expect(output).toContain('Pi MCP Adapter')
+    expect(output).toContain('selected but missing; install with: pi install npm:pi-mcp-adapter')
     expect(output).toContain(`${ACTIVE_AGENTS.length}/${ACTIVE_AGENTS.length} installed`)
     expect(output).toContain(`Pi home:      ${customPiHome}`)
+    expect(output).not.toContain('推荐')
+    expect(output).not.toContain(`Pi home:      ${defaultPiHome}`)
     expect(spawnSync).toHaveBeenCalledWith('pi', ['list', '--no-approve'], expect.objectContaining({
       env: expect.objectContaining({ PI_CODING_AGENT_DIR: customPiHome }),
     }))

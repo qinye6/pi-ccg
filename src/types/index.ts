@@ -57,13 +57,10 @@ export type PiExtensionOwnership = 'ccg-installed' | 'adopted' | 'missing'
 export interface PiExtensionDefinition {
   id: string
   packageSpec: `npm:${string}`
-  label: string
   category: PiExtensionCategory
   tier: PiExtensionTier
-  description: string
   defaultSelected: boolean
   docsUrl: string
-  securityNotes: readonly string[]
   conflicts?: readonly string[]
 }
 

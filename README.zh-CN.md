@@ -9,7 +9,7 @@ CCG 将 Pi CLI 改造成一个有边界的多智能体开发 supervisor。Pi 是
 
 [English](./README.md)
 
-> 当前包版本：`3.2.5` · Node.js `>=20`
+> 当前包版本：`3.2.6` · Node.js `>=20`
 
 ## 工作流程
 
@@ -103,7 +103,7 @@ maxSubagentDepth = 1
 npx pi-ccg init
 ```
 
-安装器会检测必需的 `npm:pi-subagents`，缺失时先询问是否安装；同时展示精选扩展目录。推荐项可默认勾选，但执行任何第三方 package 操作前都必须由用户明确确认。
+安装器会把必需的 `npm:pi-subagents` 和其他精选扩展放在同一个 checkbox 中展示。缺失时它会默认勾选，但你仍可取消勾选，仅安装 workflow assets；真正执行 package 安装仍然要等到最终确认。若取消勾选，CCG 会把该 runtime 记录为 `missing`，保留已安装资产，并由 `ccg doctor` / `ccg status` 明确报告运行前仍需处理。
 
 | 分级 | Package | 能力 |
 |---|---|---|
@@ -131,7 +131,7 @@ npx pi-ccg init \
   --max-subagent-depth 1
 ```
 
-fresh non-interactive install 不会静默安装 optional packages；只有 `--extensions` 显式选择时才安装。`--no-optional-extensions` 表示仅安装核心工作流。
+fresh non-interactive install 不会静默安装 optional packages；只有 `--extensions` 显式选择时才安装。必需的 `pi-subagents` 仍需通过 `--install-required-package` 单独授权，非交互模式同样不会静默安装。`--no-optional-extensions` 表示仅安装核心工作流。
 
 模型分开配置：
 
@@ -141,6 +141,12 @@ fresh non-interactive install 不会静默安装 optional packages；只有 `--e
 - scout/planner 默认继承 Pi 的 `subagents.defaultModel`
 
 `--provider-file <path>` 只能用于不含真实凭据的 provider 定义。凭据不得进入 provider file、prompt、template、task、log 或 metadata。
+
+`ccg extensions` 与安装器使用同样的 required runtime 语义。若 `pi-subagents` 已安装或已被采用，它会保持勾选且只读，不会重复安装，也永远不会进入 removal plan。
+
+## 发布
+
+`.github/workflows/npm-publish.yml` 已切换为 npm Trusted Publishing + GitHub OIDC：保留 `permissions.contents: read` 和 `permissions.id-token: write`，继续执行 `pnpm typecheck`、`pnpm build`、`pnpm test`、`npm pack --dry-run --json` 验证链，并以 `npm publish --access public --provenance` 发布；workflow 中不再依赖 `NPM_TOKEN` 或 `NODE_AUTH_TOKEN`。
 
 ## CLI 命令
 

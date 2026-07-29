@@ -2,7 +2,7 @@
 
 > [根目录](../CLAUDE.md) > **templates**
 
-**Last Updated**: 2026-07-28 (v3.2.5)
+**Last Updated**: 2026-07-29 (v3.2.6)
 
 ## 当前发布面
 

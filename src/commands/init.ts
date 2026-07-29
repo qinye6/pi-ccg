@@ -4,14 +4,18 @@ import fs from 'fs-extra'
 import inquirer from 'inquirer'
 import ora from 'ora'
 import { join } from 'pathe'
-import { initI18n } from '../i18n'
+import { i18n, initI18n } from '../i18n'
 import { readCcgMetadata } from '../utils/config'
 import { installPiWorkflow } from '../utils/installer'
 import {
   applyPiExtensionSelection,
-  PI_EXTENSION_CATALOG,
+  buildPiExtensionSelectionStates,
+  presentPiExtensionChoice,
+  presentPiExtensionSecuritySection,
+  requiredPiExtensionState,
   recommendedPiExtensionIds,
   REQUIRED_PI_EXTENSION,
+  summarizeSelectedPiExtensions,
 } from '../utils/pi-extensions'
 import type { PiProvider } from '../utils/pi-config'
 import { computeEffectiveDevParallelism, computeRequiredSpawns, writeJsonAtomic } from '../utils/pi-config'
@@ -32,6 +36,10 @@ type StepResult = 'next' | 'back' | 'cancel' | StepId
 const STEP_ORDER: StepId[] = ['lang', 'env', 'extensions', 'scope', 'provider', 'frontend', 'backend', 'review', 'limits', 'entry', 'summary']
 const BACK = '__back__'
 const CANCEL = '__cancel__'
+
+function tx(key: string, options?: Record<string, unknown>): string {
+  return i18n.t(key, options) as string
+}
 
 interface WizardState {
   lang: SupportedLang
@@ -110,8 +118,8 @@ async function readProviderFile(path?: string): Promise<Record<string, PiProvide
 
 function navChoices(): Array<{ name: string, value: string }> {
   return [
-    { name: '← 返回上一步', value: BACK },
-    { name: '× 取消', value: CANCEL },
+    { name: tx('piExtensions.nav.back'), value: BACK },
+    { name: tx('piExtensions.nav.cancel'), value: CANCEL },
   ]
 }
 
@@ -160,51 +168,53 @@ async function runStep(step: StepId, state: WizardState): Promise<StepResult> {
     state.piAvailable = runtime.piAvailable
     state.piSubagentsAvailable = runtime.piSubagentsAvailable
     console.log(state.piAvailable
-      ? ansis.green(`  ✓ Pi CLI 已可用 (${runtime.piVersion ?? 'installed'})`)
-      : ansis.yellow('  ⚠ 未检测到 Pi CLI；可继续生成配置，但运行工作流前必须安装 Pi CLI。'))
+      ? ansis.green(tx('piExtensions.env.piAvailable', { version: runtime.piVersion ?? 'installed' }))
+      : ansis.yellow(tx('piExtensions.env.piMissing')))
     console.log(state.piSubagentsAvailable
-      ? ansis.green('  ✓ 必需的 pi-subagents package 已安装')
-      : ansis.yellow(`  ⚠ 未检测到必需的 pi-subagents package；运行前请执行: ${PI_SUBAGENTS_INSTALL_COMMAND}`))
+      ? ansis.green(tx('piExtensions.env.requiredInstalled'))
+      : ansis.yellow(tx('piExtensions.env.requiredMissing', { command: PI_SUBAGENTS_INSTALL_COMMAND })))
     const { value } = await inquirer.prompt<{ value: string }>([{
-      type: 'list', name: 'value', message: 'Pi 环境检查:',
-      choices: [{ name: '继续', value: 'next' }, ...navChoices()],
+      type: 'list', name: 'value', message: tx('piExtensions.env.title'),
+      choices: [{ name: tx('piExtensions.nav.continue'), value: 'next' }, ...navChoices()],
     }])
     return value === BACK ? 'back' : value === CANCEL ? 'cancel' : 'next'
   }
 
   if (step === 'extensions') {
-    console.log(ansis.yellow('  Pi packages execute with your full user permissions. Review sources before installation.'))
-    console.log(ansis.gray('  MCP credentials remain in user-managed .mcp.json / .pi/mcp.json files.'))
+    const runtime = inspectPiRuntime(state.piHome)
+    state.piAvailable = runtime.piAvailable
+    state.piSubagentsAvailable = runtime.piSubagentsAvailable
+    const states = buildPiExtensionSelectionStates({
+      runtime,
+      selectedIds: state.extensionIds,
+      installRequiredPackage: state.installRequiredPackage,
+    })
+    const requiredState = requiredPiExtensionState(states)
+
+    console.log(ansis.yellow(tx('piExtensions.warnings.execution')))
+    console.log(ansis.gray(tx('piExtensions.warnings.credentials')))
+    if (requiredState.disabled) console.log(ansis.gray(tx('piExtensions.warnings.requiredReadOnly')))
+    for (const line of presentPiExtensionSecuritySection(states)) console.log(ansis.gray(line))
     const { value } = await inquirer.prompt<{ value: string[] }>([{
       type: 'checkbox',
       name: 'value',
-      message: '选择可选 Pi 扩展（推荐项已预选）:',
+      message: tx('piExtensions.prompt.message'),
       choices: [
-        ...PI_EXTENSION_CATALOG
-          .filter(extension => extension.tier !== 'required')
-          .map(extension => ({
-            name: `${extension.label} [${extension.tier}] — ${extension.description}`,
-            value: extension.id,
-            checked: state.extensionIds.includes(extension.id),
-          })),
+        ...states.map(extensionState => ({
+          name: presentPiExtensionChoice(extensionState),
+          value: extensionState.extension.id,
+          checked: extensionState.checked,
+          disabled: extensionState.disabled ? tx('piExtensions.status.readOnly') : undefined,
+        })),
         new inquirer.Separator(),
-        { name: '← 返回上一步', value: BACK },
-        { name: '× 取消', value: CANCEL },
+        { name: tx('piExtensions.nav.back'), value: BACK },
+        { name: tx('piExtensions.nav.cancel'), value: CANCEL },
       ],
     }])
     if (value.includes(BACK)) return 'back'
     if (value.includes(CANCEL)) return 'cancel'
-    state.extensionIds = value
-
-    if (!state.piSubagentsAvailable) {
-      const answer = await inquirer.prompt<{ install: boolean }>([{
-        type: 'confirm',
-        name: 'install',
-        message: `安装运行必需 package（${PI_SUBAGENTS_INSTALL_COMMAND}）?`,
-        default: true,
-      }])
-      state.installRequiredPackage = answer.install
-    }
+    state.installRequiredPackage = value.includes(REQUIRED_PI_EXTENSION.id) && !requiredState.installed
+    state.extensionIds = value.filter(id => id !== REQUIRED_PI_EXTENSION.id)
     return 'next'
   }
 
@@ -286,30 +296,41 @@ async function runStep(step: StepId, state: WizardState): Promise<StepResult> {
     return 'next'
   }
 
-  console.log(ansis.cyan.bold('\n  CCG Pi 安装摘要'))
-  console.log(`  Pi CLI: ${state.piAvailable ? '可用' : '未检测到'}`)
-  console.log(`  pi-subagents: ${state.piSubagentsAvailable ? '已安装' : state.installRequiredPackage ? '将安装' : '未检测到（运行前必需）'}`)
-  console.log(`  可选扩展: ${state.extensionIds.length > 0 ? state.extensionIds.join(', ') : '不安装'}`)
-  console.log(ansis.yellow('  第三方 Pi packages 以当前用户权限执行；确认安装即授权执行下列 package 操作。'))
-  console.log(`  范围: ${state.scope}`)
-  console.log(`  Frontend: ${state.frontendModel ?? '继承 Pi 默认模型'}`)
-  console.log(`  Backend: ${state.backendModel ?? '继承 Pi 默认模型'}`)
-  console.log(`  Review/Test: ${state.reviewModel ?? '继承 Pi 默认模型'}`)
-  console.log(`  Caps: dev=${state.caps.devAgentCap}, concurrency=${state.caps.globalConcurrencyLimit}, spawns=${state.caps.maxSpawnsPerSession}, depth=${state.caps.maxSubagentDepth}`)
+  console.log(ansis.cyan.bold(`\n  ${tx('piExtensions.summary.title')}`))
+  const runtime = inspectPiRuntime(state.piHome)
+  const states = buildPiExtensionSelectionStates({
+    runtime,
+    selectedIds: state.extensionIds,
+    installRequiredPackage: state.installRequiredPackage,
+  })
+  const requiredState = requiredPiExtensionState(states)
+  const selectedExtensions = summarizeSelectedPiExtensions(states)
+  console.log(`  ${tx('piExtensions.fields.piCli')}: ${state.piAvailable ? tx('piExtensions.status.ready') : tx('piExtensions.status.missing')}`)
+  console.log(`  ${tx('piExtensions.fields.requiredRuntime')}: ${requiredState.installed ? tx(`piExtensions.status.${requiredState.status}`) : state.installRequiredPackage ? tx('piExtensions.summary.requiredWillInstall') : tx('piExtensions.summary.requiredMissing')}`)
+  console.log(`  ${tx('piExtensions.fields.optionalExtensions')}: ${selectedExtensions.length > 0 ? selectedExtensions.join(', ') : tx('piExtensions.summary.selectedNone')}`)
+  console.log(ansis.yellow(tx('piExtensions.warnings.summaryAuthorization')))
+  if (!requiredState.installed && !state.installRequiredPackage) {
+    console.log(ansis.yellow(tx('piExtensions.warnings.runtimeUnavailable', { command: PI_SUBAGENTS_INSTALL_COMMAND })))
+  }
+  console.log(`  ${tx('piExtensions.fields.scope')}: ${state.scope}`)
+  console.log(`  ${tx('piExtensions.fields.frontend')}: ${state.frontendModel ?? tx('piExtensions.summary.inheritDefault')}`)
+  console.log(`  ${tx('piExtensions.fields.backend')}: ${state.backendModel ?? tx('piExtensions.summary.inheritDefault')}`)
+  console.log(`  ${tx('piExtensions.fields.review')}: ${state.reviewModel ?? tx('piExtensions.summary.inheritDefault')}`)
+  console.log(`  ${tx('piExtensions.fields.caps')}: dev=${state.caps.devAgentCap}, concurrency=${state.caps.globalConcurrencyLimit}, spawns=${state.caps.maxSpawnsPerSession}, depth=${state.caps.maxSubagentDepth}`)
   const { value } = await inquirer.prompt<{ value: string }>([{
-    type: 'list', name: 'value', message: '确认安装:',
+    type: 'list', name: 'value', message: tx('piExtensions.confirm.title'),
     choices: [
-      { name: '确认安装', value: 'confirm' },
-      { name: '修改语言', value: 'lang' },
-      { name: '修改安装范围', value: 'scope' },
-      { name: '修改扩展选择', value: 'extensions' },
-      { name: '修改供应商', value: 'provider' },
-      { name: '修改前端模型', value: 'frontend' },
-      { name: '修改后端模型', value: 'backend' },
-      { name: '修改审查模型', value: 'review' },
-      { name: '修改代理上限', value: 'limits' },
-      { name: '修改项目入口', value: 'entry' },
-      { name: '× 取消', value: CANCEL },
+      { name: tx('piExtensions.confirm.install'), value: 'confirm' },
+      { name: tx('piExtensions.confirm.editLang'), value: 'lang' },
+      { name: tx('piExtensions.confirm.editScope'), value: 'scope' },
+      { name: tx('piExtensions.confirm.editExtensions'), value: 'extensions' },
+      { name: tx('piExtensions.confirm.editProvider'), value: 'provider' },
+      { name: tx('piExtensions.confirm.editFrontend'), value: 'frontend' },
+      { name: tx('piExtensions.confirm.editBackend'), value: 'backend' },
+      { name: tx('piExtensions.confirm.editReview'), value: 'review' },
+      { name: tx('piExtensions.confirm.editLimits'), value: 'limits' },
+      { name: tx('piExtensions.confirm.editEntry'), value: 'entry' },
+      { name: tx('piExtensions.nav.cancel'), value: CANCEL },
     ],
   }])
   if (value === CANCEL) return 'cancel'
@@ -364,7 +385,7 @@ export async function init(options: InitOptions = {}): Promise<void> {
     piAvailable: runtime.piAvailable,
     piSubagentsAvailable: runtime.piSubagentsAvailable,
     extensionIds,
-    installRequiredPackage: options.installRequiredPackage ?? false,
+    installRequiredPackage: options.installRequiredPackage ?? (!options.skipPrompt && !runtime.piSubagentsAvailable),
     scope: options.installProjectAssets === false ? 'user' : 'user-project',
     provider: undefined,
     models: discovered.models,
@@ -384,7 +405,7 @@ export async function init(options: InitOptions = {}): Promise<void> {
     while (index < STEP_ORDER.length) {
       const result = await runStep(STEP_ORDER[index], state)
       if (result === 'cancel') {
-        console.log(ansis.yellow('  已取消安装。'))
+        console.log(ansis.yellow(tx('piExtensions.outcomes.cancelled')))
         return
       }
       if (result === 'back') {
@@ -400,7 +421,7 @@ export async function init(options: InitOptions = {}): Promise<void> {
   }
 
   const providers = await readProviderFile(options.providerFile)
-  const spinner = ora('正在安装 Pi workflow...').start()
+  const spinner = ora(tx('piExtensions.outcomes.spinner')).start()
   try {
     const result = await installPiWorkflow({
       piHome,
@@ -415,7 +436,7 @@ export async function init(options: InitOptions = {}): Promise<void> {
     })
 
     if (!result.success) {
-      spinner.fail('Pi workflow 安装未完整完成')
+      spinner.fail(tx('piExtensions.outcomes.incomplete'))
       for (const error of result.errors) console.error(ansis.red(`  - ${error}`))
       return
     }
@@ -443,24 +464,24 @@ export async function init(options: InitOptions = {}): Promise<void> {
     )
 
     if (extensionResult.errors.length > 0) {
-      spinner.warn('Pi workflow assets 已安装，但部分扩展安装失败')
+      spinner.warn(tx('piExtensions.outcomes.partial'))
       for (const error of extensionResult.errors) console.error(ansis.red(`  - ${error}`))
     }
     else if (requiredMissing) {
-      spinner.warn('Pi workflow assets 已安装，但缺少运行必需 package')
+      spinner.warn(tx('piExtensions.outcomes.requiredMissing'))
     }
     else {
-      spinner.succeed('Pi workflow 安装完成')
+      spinner.succeed(tx('piExtensions.outcomes.success'))
     }
 
-    console.log(ansis.gray(`  Pi home: ${installedPiHome}`))
-    if (state.installProjectAssets) console.log(ansis.gray(`  Project: ${result.projectDir}`))
-    console.log(ansis.gray('  Memory: pi-subagents 提供 per-agent memory；可选 memory-context 与 session-continuity 扩展提供跨会话上下文和 durable handoff。'))
-    if (!state.piAvailable) console.log(ansis.yellow('  运行前请先安装并配置 Pi CLI。'))
-    if (requiredMissing) console.log(ansis.yellow(`  运行前请安装必需 package: ${PI_SUBAGENTS_INSTALL_COMMAND}`))
+    console.log(ansis.gray(`  ${tx('piExtensions.fields.piHome')}: ${installedPiHome}`))
+    if (state.installProjectAssets) console.log(ansis.gray(`  ${tx('piExtensions.fields.project')}: ${result.projectDir}`))
+    console.log(ansis.gray(tx('piExtensions.outcomes.memory')))
+    if (!state.piAvailable) console.log(ansis.yellow(tx('piExtensions.outcomes.piCliHint')))
+    if (requiredMissing) console.log(ansis.yellow(tx('piExtensions.outcomes.runtimeHint', { command: PI_SUBAGENTS_INSTALL_COMMAND })))
   }
   catch (error) {
-    spinner.fail('Pi workflow 安装失败')
+    spinner.fail(tx('piExtensions.outcomes.failed'))
     console.error(ansis.red(`  ${error instanceof Error ? error.message : String(error)}`))
   }
 }

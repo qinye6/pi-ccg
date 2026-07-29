@@ -3,6 +3,7 @@ import ansis from 'ansis'
 import fs from 'fs-extra'
 import { join } from 'pathe'
 import { version as packageVersion } from '../../package.json'
+import { initI18n } from '../i18n'
 import {
   CCG_MANAGED_BLOCK_START,
   CCG_PI_ACTIVE_AGENT_NAMES,
@@ -17,7 +18,12 @@ import {
   getSubagentExtensionConfigPath,
 } from '../utils/pi-paths'
 import { computeEffectiveDevParallelism, computeRequiredSpawns } from '../utils/pi-config'
-import { PI_EXTENSION_CATALOG, REQUIRED_PI_EXTENSION } from '../utils/pi-extensions'
+import {
+  PI_EXTENSION_CATALOG,
+  presentPiExtensionLabel,
+  presentPiExtensionTier,
+  REQUIRED_PI_EXTENSION,
+} from '../utils/pi-extensions'
 import {
   inspectPiRuntime,
   PI_SUBAGENTS_INSTALL_COMMAND,
@@ -113,13 +119,18 @@ function configuredModels(models: Record<string, unknown> | null): Set<string> {
   return result
 }
 
+function metadataLanguage(metadata: Record<string, unknown> | null): 'zh-CN' | 'en' {
+  return metadata?.language === 'en' ? 'en' : 'zh-CN'
+}
+
 async function collectChecks(options: DoctorOptions = {}): Promise<Check[]> {
   const projectDir = options.projectDir ?? process.cwd()
   const piHome = options.installDir ?? getPiAgentHome()
-  const checks: Check[] = []
   const metadataPath = getCcgMetadataPath(piHome)
   const metadataExists = await fs.pathExists(metadataPath)
   const metadata = await readJson(metadataPath)
+  await initI18n(metadataLanguage(metadata))
+  const checks: Check[] = []
   const scope = installScope(metadata)
   const runtime = inspectPiRuntime(piHome)
 
@@ -148,16 +159,16 @@ async function collectChecks(options: DoctorOptions = {}): Promise<Check[]> {
     const installedVersion = installedPackages.get(extension.packageSpec)
     if (!entry?.selected) {
       checks.push({
-        label: extension.label,
+        label: presentPiExtensionLabel(extension),
         status: SKIP,
         detail: installedPackages.has(extension.packageSpec)
           ? `not selected by CCG; package detected${installedVersion ? ` (${installedVersion})` : ''}`
-          : `not selected [${extension.tier}]`,
+          : `not selected [${presentPiExtensionTier(extension)}]`,
       })
       continue
     }
     checks.push({
-      label: extension.label,
+      label: presentPiExtensionLabel(extension),
       status: installedPackages.has(extension.packageSpec) ? OK : WARN,
       detail: installedPackages.has(extension.packageSpec)
         ? `installed${installedVersion ? ` (${installedVersion})` : ''}; ${entry.ownership}`

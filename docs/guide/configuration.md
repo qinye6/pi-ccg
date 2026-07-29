@@ -13,7 +13,7 @@ A run may create `N` frontend and `M` backend instances from the planner's compo
 
 ## Pi extension catalog
 
-CCG stores package definitions in one validated catalog and records only selection, detected version, timestamps, and ownership in `ccg-workflow.json`.
+CCG stores package definitions in one validated catalog and records only selection, detected version, timestamps, and ownership in `ccg-workflow.json`. Display names, tier labels, descriptions, warnings, and summaries are localized through shared i18n resources instead of duplicated per-language catalogs.
 
 | ID | Package | Tier | Capability |
 |---|---|---|---|
@@ -29,6 +29,8 @@ Ownership values:
 - `ccg-installed`: CCG installed the package and may remove it.
 - `adopted`: it already existed; CCG reports but never removes it.
 - `missing`: selected or required but not detected.
+
+`core-subagents` is always represented in metadata because the workflow requires it. If the user declines installation, ownership remains `missing`; if it already exists, the UI shows it as checked and read-only; if CCG installed it, ownership is `ccg-installed` but the required runtime still never enters a removal plan.
 
 `ccg update` preserves this metadata without changing packages. `ccg extensions` is the package-management boundary.
 

@@ -29,6 +29,10 @@ let root: string
 let piHome: string
 let projectDir: string
 let originalCwd: string
+let runtimeHasRequiredPackage: boolean
+let extensionSelection: string[]
+let finalChoice: 'confirm' | 'cancel'
+let extensionChoices: Array<Record<string, unknown>>
 
 beforeEach(async () => {
   root = join(tmpdir(), `ccg-init-custom-home-${process.pid}-${Math.random().toString(16).slice(2)}`)
@@ -38,6 +42,10 @@ beforeEach(async () => {
   await fs.ensureDir(piHome)
   await fs.ensureDir(projectDir)
   process.chdir(projectDir)
+  runtimeHasRequiredPackage = true
+  extensionSelection = []
+  finalChoice = 'confirm'
+  extensionChoices = []
 
   mocks.spawnSync.mockReset()
   mocks.spawnSync.mockImplementation((_command: string, args: string[], options: { env?: NodeJS.ProcessEnv }) => {
@@ -45,7 +53,7 @@ beforeEach(async () => {
     if (args[0] === '--version') return { status: 0, stdout: 'pi 1.0.0\n', stderr: '' }
     return {
       status: 0,
-      stdout: targetsCustomHome ? 'Packages:\n  npm:pi-subagents@0.37.0\n' : 'Packages:\n',
+      stdout: targetsCustomHome && runtimeHasRequiredPackage ? 'Packages:\n  npm:pi-subagents@0.37.0\n' : 'Packages:\n',
       stderr: '',
     }
   })
@@ -56,14 +64,17 @@ beforeEach(async () => {
     const message = String(question.message ?? '')
     if (message.includes('选择语言')) return { value: 'zh-CN' }
     if (message === 'Pi 环境检查:') return { value: 'next' }
-    if (message.includes('选择可选 Pi 扩展')) return { value: [] }
+    if (message.includes('选择 Pi 扩展')) {
+      extensionChoices = question.choices as Array<Record<string, unknown>>
+      return { value: extensionSelection }
+    }
     if (message === '安装范围:') return { value: 'user' }
     if (message.includes('模型供应商过滤')) return { value: '__all__' }
     if (message.includes('选择前端模型')) return { value: 'demo/frontend' }
     if (message.includes('选择后端模型')) return { value: 'demo/backend' }
     if (message.includes('选择审查/测试模型')) return { value: 'demo/review' }
     if (message === '项目入口:') return { value: 'no' }
-    if (message === '确认安装:') return { value: 'confirm' }
+    if (message === '确认安装:') return { value: finalChoice === 'confirm' ? 'confirm' : '__cancel__' }
     if (question.name === 'devAgentCap') {
       return {
         devAgentCap: 4,
@@ -72,7 +83,6 @@ beforeEach(async () => {
         maxSubagentDepth: 1,
       }
     }
-    if (question.name === 'install') return { install: false }
     throw new Error(`Unexpected prompt: ${message}`)
   })
 })
@@ -98,6 +108,43 @@ describe('interactive init with a custom Pi home', () => {
     expect(mocks.prompt.mock.calls.flatMap(([questions]) => questions).some(
       (question: Record<string, unknown>) => question.name === 'install',
     )).toBe(false)
+    const requiredChoice = extensionChoices.find(choice => choice.value === 'core-subagents')
+    expect(requiredChoice).toMatchObject({ checked: true, disabled: '只读' })
     expect(await fs.pathExists(join(piHome, 'ccg-workflow.json'))).toBe(true)
+  })
+
+  it('keeps required runtime ownership as missing when the checkbox is deselected', async () => {
+    runtimeHasRequiredPackage = false
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await init({ installDir: piHome })
+
+    const requiredChoice = extensionChoices.find(choice => choice.value === 'core-subagents')
+    expect(requiredChoice).toMatchObject({ checked: true })
+    expect(requiredChoice?.disabled).toBeUndefined()
+
+    const metadata = await fs.readJson(join(piHome, 'ccg-workflow.json'))
+    expect(metadata.extensions).toEqual([
+      expect.objectContaining({
+        id: 'core-subagents',
+        packageSpec: 'npm:pi-subagents',
+        ownership: 'missing',
+      }),
+    ])
+  })
+
+  it('does not install assets or packages after the final confirmation is refused', async () => {
+    runtimeHasRequiredPackage = false
+    finalChoice = 'cancel'
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await init({ installDir: piHome })
+
+    expect(await fs.pathExists(join(piHome, 'ccg-workflow.json'))).toBe(false)
+    expect(mocks.prompt.mock.calls.flatMap(([questions]) => questions).some(
+      (question: Record<string, unknown>) => question.name === 'install',
+    )).toBe(false)
   })
 })

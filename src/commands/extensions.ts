@@ -2,13 +2,20 @@ import type { PiExtensionMetadataEntry } from '../types'
 import ansis from 'ansis'
 import inquirer from 'inquirer'
 import { join } from 'pathe'
+import { i18n, initI18n } from '../i18n'
 import { readCcgMetadata, updateCcgMetadata } from '../utils/config'
 import {
   applyPiExtensionSelection,
+  buildPiExtensionSelectionStates,
   getPiExtension,
-  PI_EXTENSION_CATALOG,
+  planPiExtensionPackageOperations,
+  presentPiExtensionChoice,
+  presentPiExtensionLabel,
+  presentPiExtensionOperation,
+  presentPiExtensionSecuritySection,
   recommendedPiExtensionIds,
   REQUIRED_PI_EXTENSION,
+  requiredPiExtensionState,
 } from '../utils/pi-extensions'
 import { getPiAgentHome } from '../utils/pi-paths'
 import { inspectPiRuntime, runPiPackageCommand } from '../utils/pi-runtime'
@@ -21,92 +28,87 @@ function optionalEntries(entries: readonly PiExtensionMetadataEntry[] | undefine
   return (entries ?? []).filter(entry => entry.id !== REQUIRED_PI_EXTENSION.id && entry.selected)
 }
 
-function extensionChoiceName(id: string): string {
-  const extension = getPiExtension(id)
-  if (!extension) return id
-  return `${extension.label} [${extension.tier}] — ${extension.description}`
+function tx(key: string, options?: Record<string, unknown>): string {
+  return i18n.t(key, options) as string
 }
 
 export async function extensions(options: ExtensionsCommandOptions = {}): Promise<void> {
   const piHome = options.installDir ?? getPiAgentHome()
   const metadataPath = join(piHome, 'ccg-workflow.json')
   const metadata = await readCcgMetadata(metadataPath)
+  await initI18n(metadata?.language === 'en' ? 'en' : 'zh-CN')
   const runtime = inspectPiRuntime(piHome)
-  const installed = new Set(runtime.packages.map(item => item.packageSpec))
 
-  console.log(ansis.cyan.bold('\n  CCG Pi Extensions\n'))
-  console.log(ansis.yellow('  Pi packages execute with your full user permissions. Review package sources before installation.'))
-  console.log(ansis.gray('  CCG never stores MCP/API credentials and never overwrites user-managed MCP configuration.\n'))
+  console.log(ansis.cyan.bold(`\n  ${tx('piExtensions.manage.title')}\n`))
+  console.log(ansis.yellow(tx('piExtensions.warnings.execution')))
+  console.log(ansis.gray(`${tx('piExtensions.warnings.credentials')}\n`))
 
-  for (const extension of PI_EXTENSION_CATALOG) {
-    console.log(`  ${installed.has(extension.packageSpec) ? ansis.green('✓') : ansis.gray('○')} ${extension.label.padEnd(24)} ${ansis.gray(`${extension.packageSpec} [${extension.tier}]`)}`)
+  const previous = metadata?.extensions ?? []
+  const defaults = metadata?.extensions
+    ? optionalEntries(metadata.extensions).map(entry => entry.id)
+    : recommendedPiExtensionIds()
+  const initialStates = buildPiExtensionSelectionStates({
+    previous,
+    runtime,
+    selectedIds: defaults,
+    installRequiredPackage: !runtime.piSubagentsAvailable,
+  })
+
+  for (const state of initialStates) {
+    const mark = state.checked ? ansis.green('✓') : ansis.gray('○')
+    console.log(`  ${mark} ${presentPiExtensionChoice(state)} ${ansis.gray(state.extension.packageSpec)}`)
   }
+  for (const line of presentPiExtensionSecuritySection(initialStates)) console.log(ansis.gray(line))
 
   if (!runtime.piAvailable) {
-    console.log(ansis.red('\n  Pi CLI is not available; install Pi before managing extensions.\n'))
+    console.log(ansis.red(`\n  ${tx('piExtensions.manage.unavailable')}\n`))
     return
   }
 
-  const previous = optionalEntries(metadata?.extensions)
-  const defaults = metadata?.extensions
-    ? previous.map(entry => entry.id)
-    : recommendedPiExtensionIds()
   const { selectedIds } = await inquirer.prompt<{ selectedIds: string[] }>([{
     type: 'checkbox',
     name: 'selectedIds',
-    message: 'Select optional extensions:',
-    choices: PI_EXTENSION_CATALOG
-      .filter(extension => extension.tier !== 'required')
-      .map(extension => ({
-        name: extensionChoiceName(extension.id),
-        value: extension.id,
-        checked: defaults.includes(extension.id),
-      })),
+    message: tx('piExtensions.manage.prompt'),
+    choices: initialStates.map(state => ({
+      name: presentPiExtensionChoice(state),
+      value: state.extension.id,
+      checked: state.checked,
+      disabled: state.disabled ? tx('piExtensions.status.readOnly') : undefined,
+    })),
   }])
 
-  const requiredInstalled = installed.has(REQUIRED_PI_EXTENSION.packageSpec)
-  let installRequiredPackage = false
-  if (!requiredInstalled) {
-    const answer = await inquirer.prompt<{ install: boolean }>([{
-      type: 'confirm',
-      name: 'install',
-      message: `Install required package with: pi install ${REQUIRED_PI_EXTENSION.packageSpec}?`,
-      default: true,
-    }])
-    installRequiredPackage = answer.install
-  }
-
-  const priorById = new Map((metadata?.extensions ?? []).map(entry => [entry.id, entry]))
-  const deselectedOwned = previous.filter(entry => !selectedIds.includes(entry.id) && entry.ownership === 'ccg-installed')
-  const operations = [
-    ...(!requiredInstalled && installRequiredPackage ? [`install ${REQUIRED_PI_EXTENSION.packageSpec}`] : []),
-    ...selectedIds.flatMap((id) => {
-      const extension = getPiExtension(id)
-      return extension && !installed.has(extension.packageSpec)
-        ? [`install ${extension.packageSpec}`]
-        : []
-    }),
-    ...deselectedOwned.map(entry => `remove ${entry.packageSpec}`),
-  ]
+  const postSelectionStates = buildPiExtensionSelectionStates({
+    previous,
+    runtime,
+    selectedIds: selectedIds.filter(id => id !== REQUIRED_PI_EXTENSION.id),
+    installRequiredPackage: selectedIds.includes(REQUIRED_PI_EXTENSION.id) && !runtime.piSubagentsAvailable,
+  })
+  const requiredState = requiredPiExtensionState(postSelectionStates)
+  const operations = planPiExtensionPackageOperations({
+    previous,
+    states: postSelectionStates,
+  })
 
   if (operations.length > 0) {
-    console.log(ansis.cyan('\n  Planned package operations:'))
-    for (const operation of operations) console.log(`  - pi ${operation}`)
+    console.log(ansis.cyan(`\n  ${tx('piExtensions.operations.title')}`))
+    for (const operation of operations) console.log(`  - ${presentPiExtensionOperation(operation)}`)
     const { confirm } = await inquirer.prompt<{ confirm: boolean }>([{
       type: 'confirm',
       name: 'confirm',
-      message: 'Run these third-party package operations?',
+      message: tx('piExtensions.operations.confirm'),
       default: false,
     }])
     if (!confirm) {
-      console.log(ansis.yellow('  Extension changes cancelled.'))
+      console.log(ansis.yellow(tx('piExtensions.operations.cancelled')))
       return
     }
   }
 
   const errors: string[] = []
   const failedRemovals: PiExtensionMetadataEntry[] = []
-  for (const entry of deselectedOwned) {
+  for (const operation of operations.filter(item => item.action === 'remove')) {
+    const entry = previous.find(item => item.id === operation.id)
+    if (!entry) continue
     const result = await runPiPackageCommand('remove', entry.packageSpec, { piHome })
     if (!result.success) {
       errors.push(`${result.command}: ${result.stderr || `exit ${result.exitCode ?? 'unknown'}`}`)
@@ -115,18 +117,21 @@ export async function extensions(options: ExtensionsCommandOptions = {}): Promis
   }
 
   const result = await applyPiExtensionSelection({
-    selectedIds,
-    installRequiredPackage,
+    selectedIds: selectedIds.filter(id => id !== REQUIRED_PI_EXTENSION.id),
+    installRequiredPackage: requiredState.installAuthorized,
     piHome,
-    previous: [...priorById.values()],
+    previous,
   })
   errors.push(...result.errors)
   await updateCcgMetadata({ extensions: [...result.entries, ...failedRemovals] }, metadataPath)
 
   if (errors.length > 0) {
-    console.log(ansis.yellow('\n  Extension configuration saved with errors:'))
+    console.log(ansis.yellow(`\n  ${tx('piExtensions.manage.savedWithErrors')}`))
     for (const error of errors) console.log(ansis.red(`  - ${error}`))
     return
   }
-  console.log(ansis.green('\n  ✓ Extension configuration updated.'))
+  console.log(ansis.green(`\n  ${tx('piExtensions.manage.updated')}`))
+  if (requiredState.status === 'runtime-unavailable') {
+    console.log(ansis.yellow(tx('piExtensions.manage.runtimeWarning')))
+  }
 }

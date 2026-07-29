@@ -1,82 +1,117 @@
-import type { PiExtensionDefinition, PiExtensionMetadataEntry } from '../types'
+import type {
+  PiExtensionDefinition,
+  PiExtensionMetadataEntry,
+  PiExtensionOwnership,
+} from '../types'
+import { i18n } from '../i18n'
+import type { PiRuntimeInspection } from './pi-runtime'
 import { inspectPiRuntime, runPiPackageCommand } from './pi-runtime'
 
 export const PI_EXTENSION_CATALOG = [
   {
     id: 'core-subagents',
     packageSpec: 'npm:pi-subagents',
-    label: 'Pi Subagents',
     category: 'orchestration',
     tier: 'required',
-    description: 'CCG supervisor coordination, bounded dynamic builders, and per-agent project memory.',
     defaultSelected: true,
     docsUrl: 'https://www.npmjs.com/package/pi-subagents',
-    securityNotes: ['Required runtime package. Pi packages execute with the current user permissions.'],
   },
   {
     id: 'mcp-adapter',
     packageSpec: 'npm:pi-mcp-adapter',
-    label: 'Pi MCP Adapter',
     category: 'mcp',
     tier: 'recommended',
-    description: 'Lazy MCP servers through one compact proxy tool, with metadata caching and output guards.',
     defaultSelected: true,
     docsUrl: 'https://github.com/nicobailon/pi-mcp-adapter',
-    securityNotes: [
-      'MCP servers may execute commands or access external services.',
-      'CCG never writes real MCP credentials and preserves user-managed MCP configuration.',
-    ],
   },
   {
     id: 'memory-context',
     packageSpec: 'npm:pi-memctx',
-    label: 'Memory Context',
     category: 'context',
     tier: 'recommended',
-    description: 'Local Markdown knowledge packs with search, persistence, and automatic context injection.',
     defaultSelected: true,
     docsUrl: 'https://github.com/weauratech/pi-memctx',
-    securityNotes: ['Review persisted project knowledge before sharing a repository or machine profile.'],
   },
   {
     id: 'session-continuity',
     packageSpec: 'npm:pi-session-continuity',
-    label: 'Session Continuity',
     category: 'continuity',
     tier: 'recommended',
-    description: 'Durable checkpoints and handoffs for recoverable long-running Pi sessions.',
     defaultSelected: true,
     docsUrl: 'https://github.com/bernardofortes/pi-session-continuity',
-    securityNotes: ['Handoff files may contain project context; do not place secrets in task summaries.'],
   },
   {
     id: 'pr-review',
     packageSpec: 'npm:pi-pr-review',
-    label: 'PR Review',
     category: 'review',
     tier: 'optional',
-    description: 'Parallel GitHub pull-request review with structured findings and optional verification.',
     defaultSelected: false,
     docsUrl: 'https://github.com/10ego/pi-pr-review',
-    securityNotes: ['Publishing review comments is outward-facing and requires separate confirmation in the extension.'],
   },
   {
     id: 'security-audit',
     packageSpec: 'npm:@vigolium/piolium',
-    label: 'Piolium Security Audit',
     category: 'security',
     tier: 'experimental',
-    description: 'Multi-phase security audits with specialist agents, bounded concurrency, and resumable state.',
     defaultSelected: false,
     docsUrl: 'https://github.com/vigolium/piolium',
-    securityNotes: [
-      'Experimental 0.0.x package; inspect the source and release before enabling.',
-      'Security agents may read broad portions of the repository and invoke local tools.',
-    ],
   },
 ] as const satisfies readonly PiExtensionDefinition[]
 
 export const REQUIRED_PI_EXTENSION = PI_EXTENSION_CATALOG[0]
+
+export type PiExtensionPresentationStatus
+  = 'installed'
+    | 'adopted'
+    | 'missing'
+    | 'planned-install'
+    | 'runtime-unavailable'
+
+export interface PiExtensionSelectionState {
+  extension: PiExtensionDefinition
+  checked: boolean
+  disabled: boolean
+  installed: boolean
+  installedVersion?: string
+  ownership: PiExtensionOwnership
+  installAuthorized: boolean
+  status: PiExtensionPresentationStatus
+}
+
+export interface PiExtensionPackageOperation {
+  action: 'install' | 'remove'
+  packageSpec: `npm:${string}`
+  id: string
+}
+
+function t(key: string, options?: Record<string, unknown>): string {
+  return i18n.t(key, options) as string
+}
+
+function extensionKey(extensionOrId: PiExtensionDefinition | string): string {
+  return typeof extensionOrId === 'string' ? extensionOrId : extensionOrId.id
+}
+
+function translationArray(key: string): string[] {
+  const value = i18n.t(key, { returnObjects: true }) as unknown
+  return Array.isArray(value) ? value.map(item => String(item)) : []
+}
+
+function installedOwnership(prior?: PiExtensionMetadataEntry): PiExtensionOwnership {
+  return prior?.ownership === 'ccg-installed' ? 'ccg-installed' : 'adopted'
+}
+
+function optionalSelection(ids: readonly string[]): string[] {
+  return normalizePiExtensionIds(ids).filter(id => id !== REQUIRED_PI_EXTENSION.id)
+}
+
+function buildInstalledMap(runtime: PiRuntimeInspection): Map<`npm:${string}`, string | null> {
+  return new Map(runtime.packages.map(item => [item.packageSpec, item.version]))
+}
+
+function isProtectedRuntimeEntry(entry: PiExtensionMetadataEntry): boolean {
+  return entry.id === REQUIRED_PI_EXTENSION.id || entry.packageSpec === REQUIRED_PI_EXTENSION.packageSpec
+}
 
 export function validatePiExtensionCatalog(
   catalog: readonly PiExtensionDefinition[] = PI_EXTENSION_CATALOG,
@@ -89,7 +124,6 @@ export function validatePiExtensionCatalog(
       throw new Error(`Invalid Pi extension package: ${extension.packageSpec}`)
     }
     if (packages.has(extension.packageSpec)) throw new Error(`Duplicate Pi extension package: ${extension.packageSpec}`)
-    if (extension.securityNotes.length === 0) throw new Error(`Missing security notes for Pi extension: ${extension.id}`)
     if (extension.tier === 'required' && !extension.defaultSelected) {
       throw new Error(`Required Pi extension must be selected by default: ${extension.id}`)
     }
@@ -125,6 +159,135 @@ export function selectedExtensionMetadata(
   return (entries ?? []).filter(entry => entry.selected && getPiExtension(entry.id) !== undefined)
 }
 
+export function presentPiExtensionLabel(extensionOrId: PiExtensionDefinition | string): string {
+  return t(`piExtensions.catalog.${extensionKey(extensionOrId)}.label`)
+}
+
+export function presentPiExtensionDescription(extensionOrId: PiExtensionDefinition | string): string {
+  return t(`piExtensions.catalog.${extensionKey(extensionOrId)}.description`)
+}
+
+export function presentPiExtensionSecurityNotes(extensionOrId: PiExtensionDefinition | string): string[] {
+  return translationArray(`piExtensions.catalog.${extensionKey(extensionOrId)}.securityNotes`)
+}
+
+export function presentPiExtensionTier(extension: PiExtensionDefinition): string {
+  return t(`piExtensions.tiers.${extension.tier}`)
+}
+
+export function presentPiExtensionStatus(state: PiExtensionSelectionState): string {
+  return t(`piExtensions.status.${state.status}`)
+}
+
+export function describePiExtensionState(state: PiExtensionSelectionState): string {
+  const tags = [presentPiExtensionStatus(state)]
+  if (state.disabled) tags.push(t('piExtensions.status.readOnly'))
+  return tags.join(' · ')
+}
+
+export function buildPiExtensionSelectionStates(options: {
+  previous?: readonly PiExtensionMetadataEntry[]
+  runtime: PiRuntimeInspection
+  selectedIds: readonly string[]
+  installRequiredPackage: boolean
+}): PiExtensionSelectionState[] {
+  const optionalIds = new Set(optionalSelection(options.selectedIds))
+  const previous = new Map((options.previous ?? []).map(entry => [entry.id, entry]))
+  const installed = buildInstalledMap(options.runtime)
+
+  return PI_EXTENSION_CATALOG.map((extension) => {
+    const prior = previous.get(extension.id)
+    const installedVersion = installed.get(extension.packageSpec) ?? undefined
+    const isInstalled = installed.has(extension.packageSpec)
+    const checked = extension.id === REQUIRED_PI_EXTENSION.id
+      ? isInstalled || options.installRequiredPackage
+      : optionalIds.has(extension.id)
+    const installAuthorized = extension.id === REQUIRED_PI_EXTENSION.id
+      ? !isInstalled && options.installRequiredPackage
+      : checked
+    const ownership = isInstalled ? installedOwnership(prior) : 'missing'
+    const status: PiExtensionPresentationStatus = isInstalled
+      ? ownership === 'ccg-installed' ? 'installed' : 'adopted'
+      : checked
+        ? 'planned-install'
+        : extension.id === REQUIRED_PI_EXTENSION.id
+          ? 'runtime-unavailable'
+          : 'missing'
+
+    return {
+      extension,
+      checked,
+      disabled: extension.id === REQUIRED_PI_EXTENSION.id && isInstalled,
+      installed: isInstalled,
+      installedVersion,
+      ownership,
+      installAuthorized,
+      status,
+    }
+  })
+}
+
+export function presentPiExtensionChoice(state: PiExtensionSelectionState): string {
+  return `${presentPiExtensionLabel(state.extension)} [${presentPiExtensionTier(state.extension)}] — ${presentPiExtensionDescription(state.extension)} (${describePiExtensionState(state)})`
+}
+
+export function summarizeSelectedPiExtensions(states: readonly PiExtensionSelectionState[]): string[] {
+  return states
+    .filter(state => state.extension.id !== REQUIRED_PI_EXTENSION.id && state.checked)
+    .map(state => presentPiExtensionLabel(state.extension))
+}
+
+export function requiredPiExtensionState(states: readonly PiExtensionSelectionState[]): PiExtensionSelectionState {
+  const state = states.find(item => item.extension.id === REQUIRED_PI_EXTENSION.id)
+  if (!state) throw new Error('Required Pi extension state is missing')
+  return state
+}
+
+export function planPiExtensionPackageOperations(options: {
+  previous?: readonly PiExtensionMetadataEntry[]
+  states: readonly PiExtensionSelectionState[]
+}): PiExtensionPackageOperation[] {
+  const operations: PiExtensionPackageOperation[] = []
+  const statesById = new Map(options.states.map(state => [state.extension.id, state]))
+
+  for (const state of options.states) {
+    if (!state.installed && state.installAuthorized) {
+      operations.push({
+        action: 'install',
+        packageSpec: state.extension.packageSpec,
+        id: state.extension.id,
+      })
+    }
+  }
+
+  for (const entry of options.previous ?? []) {
+    if (isProtectedRuntimeEntry(entry) || entry.ownership !== 'ccg-installed' || !entry.selected) continue
+    const state = statesById.get(entry.id)
+    if (state?.checked) continue
+    operations.push({
+      action: 'remove',
+      packageSpec: entry.packageSpec,
+      id: entry.id,
+    })
+  }
+
+  return operations
+}
+
+export function presentPiExtensionOperation(operation: PiExtensionPackageOperation): string {
+  return t(`piExtensions.operations.${operation.action}`, {
+    packageSpec: operation.packageSpec,
+    label: presentPiExtensionLabel(operation.id),
+  })
+}
+
+export function presentPiExtensionSecuritySection(states: readonly PiExtensionSelectionState[]): string[] {
+  return states.map((state) => {
+    const notes = presentPiExtensionSecurityNotes(state.extension)
+    return `  - ${presentPiExtensionLabel(state.extension)}: ${notes.join(' ')}`
+  })
+}
+
 export interface ApplyPiExtensionSelectionOptions {
   selectedIds: readonly string[]
   installRequiredPackage: boolean
@@ -140,39 +303,40 @@ export interface ApplyPiExtensionSelectionResult {
 export async function applyPiExtensionSelection(
   options: ApplyPiExtensionSelectionOptions,
 ): Promise<ApplyPiExtensionSelectionResult> {
-  const optionalIds = normalizePiExtensionIds(options.selectedIds)
-    .filter(id => id !== REQUIRED_PI_EXTENSION.id)
-  const selectedIds = new Set([REQUIRED_PI_EXTENSION.id, ...optionalIds])
-  const previous = new Map((options.previous ?? []).map(entry => [entry.id, entry]))
   const runtime = inspectPiRuntime(options.piHome)
-  const installed = new Map(runtime.packages.map(item => [item.packageSpec, item.version]))
-  const entries: PiExtensionMetadataEntry[] = []
   const errors: string[] = []
+  const states = buildPiExtensionSelectionStates({
+    previous: options.previous,
+    runtime,
+    selectedIds: options.selectedIds,
+    installRequiredPackage: options.installRequiredPackage,
+  })
+  const entries: PiExtensionMetadataEntry[] = []
+  const previousById = new Map((options.previous ?? []).map(entry => [entry.id, entry]))
 
-  for (const extension of PI_EXTENSION_CATALOG) {
-    if (!selectedIds.has(extension.id)) continue
-    const prior = previous.get(extension.id)
-    const detectedVersion = installed.get(extension.packageSpec)
+  for (const state of states) {
+    if (!state.checked && state.extension.id !== REQUIRED_PI_EXTENSION.id) continue
+
+    const prior = previousById.get(state.extension.id)
     const now = new Date().toISOString()
 
-    if (installed.has(extension.packageSpec)) {
+    if (state.installed) {
       entries.push({
-        id: extension.id,
-        packageSpec: extension.packageSpec,
+        id: state.extension.id,
+        packageSpec: state.extension.packageSpec,
         selected: true,
-        ownership: prior?.ownership === 'ccg-installed' ? 'ccg-installed' : 'adopted',
-        installedVersion: detectedVersion ?? undefined,
+        ownership: state.ownership,
+        installedVersion: state.installedVersion,
         installedAt: prior?.installedAt,
         updatedAt: now,
       })
       continue
     }
 
-    const shouldInstall = extension.tier !== 'required' || options.installRequiredPackage
-    if (!runtime.piAvailable || !shouldInstall) {
+    if (!runtime.piAvailable || !state.installAuthorized) {
       entries.push({
-        id: extension.id,
-        packageSpec: extension.packageSpec,
+        id: state.extension.id,
+        packageSpec: state.extension.packageSpec,
         selected: true,
         ownership: 'missing',
         updatedAt: now,
@@ -180,11 +344,11 @@ export async function applyPiExtensionSelection(
       continue
     }
 
-    const result = await runPiPackageCommand('install', extension.packageSpec, { piHome: options.piHome })
+    const result = await runPiPackageCommand('install', state.extension.packageSpec, { piHome: options.piHome })
     if (!result.success) errors.push(`${result.command}: ${result.stderr || `exit ${result.exitCode ?? 'unknown'}`}`)
     entries.push({
-      id: extension.id,
-      packageSpec: extension.packageSpec,
+      id: state.extension.id,
+      packageSpec: state.extension.packageSpec,
       selected: true,
       ownership: result.success ? 'ccg-installed' : 'missing',
       installedAt: result.success ? now : undefined,
@@ -203,7 +367,7 @@ export async function removeCcgInstalledExtensions(
   const preserved: string[] = []
   const errors: string[] = []
   for (const entry of entries ?? []) {
-    if (entry.ownership !== 'ccg-installed') {
+    if (isProtectedRuntimeEntry(entry) || entry.ownership !== 'ccg-installed') {
       preserved.push(entry.packageSpec)
       continue
     }

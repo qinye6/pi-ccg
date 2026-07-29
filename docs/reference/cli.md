@@ -23,7 +23,7 @@ npx --package pi-ccg ccg --help
 | `--project-assets` / `--no-project-assets` | Enable or disable project assets |
 | `--extensions <id,id>` | Explicitly select optional catalog entries |
 | `--no-optional-extensions` | Select no optional extensions |
-| `--install-required-package` | Authorize missing required `pi-subagents` installation |
+| `--install-required-package` | Authorize missing required `pi-subagents` installation in non-interactive mode |
 | `--frontend-model <id>` | Model for dynamic frontend builders |
 | `--backend-model <id>` | Model for dynamic backend builders |
 | `--review-model <id>` | Model for reviewer and test-runner |
@@ -50,6 +50,8 @@ pr-review            optional
 security-audit       experimental
 ```
 
-Interactive management previews every package operation and requires confirmation. Existing packages are `adopted`; only `ccg-installed` packages may be removed by CCG.
+Interactive `init` and `ccg extensions` both show `core-subagents` in the same checkbox list as the rest of the catalog. When missing, it is checked by default and can be deselected to keep workflow assets while recording runtime ownership as `missing`. When already installed or adopted, it stays checked and read-only, is never reinstalled, and is never added to a removal plan.
+
+Interactive management previews every package operation and requires confirmation. Existing packages are `adopted`; only `ccg-installed` optional packages may be removed by CCG.
 
 Update never silently changes third-party packages or adds newly recommended packages. Use `ccg extensions` for package operations.

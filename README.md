@@ -9,7 +9,7 @@ CCG turns Pi CLI into a bounded multi-agent development supervisor. Pi remains t
 
 [简体中文](./README.zh-CN.md)
 
-> Current package version: `3.2.5` · Node.js `>=20`
+> Current package version: `3.2.6` · Node.js `>=20`
 
 ## What It Does
 
@@ -103,7 +103,7 @@ Run the eleven-stage interactive installer:
 npx pi-ccg init
 ```
 
-The installer detects the required `npm:pi-subagents` package and asks before installing it when missing. It also presents a curated extension profile; recommended entries may be preselected, but all third-party package operations require explicit confirmation.
+The installer shows `npm:pi-subagents` in the same extension checkbox list as the curated optional packages. When the required runtime is missing it is checked by default, can be deselected to install workflow assets only, and is still not executed until the final package-operation confirmation. If you leave it unchecked, CCG records the runtime as `missing`, keeps assets installed, and `ccg doctor` / `ccg status` report that runtime attention is still required.
 
 | Tier | Package | Capability |
 |---|---|---|
@@ -131,7 +131,7 @@ npx pi-ccg init \
   --max-subagent-depth 1
 ```
 
-Fresh non-interactive installs do not install optional packages unless `--extensions` explicitly selects them. Use `--no-optional-extensions` for core-only installation.
+Fresh non-interactive installs do not install optional packages unless `--extensions` explicitly selects them. The required `pi-subagents` package is still gated separately by `--install-required-package`; there are no silent installs in non-interactive mode. Use `--no-optional-extensions` for core-only installation.
 
 Model settings are independent:
 
@@ -141,6 +141,8 @@ Model settings are independent:
 - Scout and planner inherit Pi's configured `subagents.defaultModel`
 
 Use `--provider-file <path>` only for non-secret provider definitions. Do not place credentials in provider files, prompts, templates, tasks, logs, or metadata.
+
+`ccg extensions` uses the same required-runtime checkbox semantics. If `pi-subagents` is already installed or adopted, it stays checked and read-only, is never reinstalled, and is never added to a removal plan.
 
 ## CLI
 
@@ -212,6 +214,10 @@ Content outside that block is preserved. Uninstall removes only managed files, m
 Pi CLI is the host runtime. `pi-subagents` is required and supplies orchestration, native supervisor coordination, and per-agent persistent `memory` frontmatter.
 
 The recommended profile adds `pi-mcp-adapter` for lazy MCP access, `pi-memctx` for searchable local knowledge and relevant context injection, and `pi-session-continuity` for durable checkpoints and handoffs. `pi-pr-review` is optional; `@vigolium/piolium` is experimental and disabled by default. Use `ccg extensions` to manage these packages. Packages that already existed are marked `adopted`; CCG removes only packages it installed and recorded as `ccg-installed`.
+
+## Publishing
+
+`.github/workflows/npm-publish.yml` is configured for npm Trusted Publishing with GitHub OIDC. It keeps `permissions: contents: read` and `id-token: write`, runs the validation chain (`pnpm typecheck`, `pnpm build`, `pnpm test`, `npm pack --dry-run --json`), and publishes with `npm publish --access public --provenance` without `NPM_TOKEN` or `NODE_AUTH_TOKEN`.
 
 CCG keeps static prompt prefixes stable and appends runtime plans and handoffs later. Lazy MCP metadata and on-demand memory reduce context churn, but actual provider prompt-cache hits remain provider-dependent and are not guaranteed.
 

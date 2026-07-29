@@ -29,5 +29,3 @@ jobs:
       - run: pnpm test
       - run: npm pack --dry-run --json
       - run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

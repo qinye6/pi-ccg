@@ -48,7 +48,7 @@ linux-do-post-update.md
 .env
 .env.*
 !.env.example
-.pi/mcp.json
+.pi/
 
 # Lock files
 # pnpm-lock.yaml is committed for CI reproducibility
