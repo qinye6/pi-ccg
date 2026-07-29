@@ -9,7 +9,7 @@ CCG turns Pi CLI into a bounded multi-agent development supervisor. Pi remains t
 
 [简体中文](./README.zh-CN.md)
 
-> Current package version: `3.2.6` · Node.js `>=20`
+> Current package version: `3.2.7` · Node.js `>=20`
 
 ## What It Does
 

@@ -176,7 +176,7 @@ describe('Pi init and update operations', () => {
 
     expect(result).toEqual({ success: true, errors: [] })
     const metadata = await fs.readJson(metadataPath)
-    expect(metadata.version).toBe('3.2.6')
+    expect(metadata.version).toBe('3.2.7')
     expect(metadata.scope).toBe('user')
     expect(metadata.lastChoices.caps).toEqual({
       devAgentCap: 4,
