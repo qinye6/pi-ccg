@@ -42,21 +42,33 @@ async function createFixtureTemplates(templateDir: string, options: FixtureOptio
   await fs.ensureDir(join(templateDir, 'project'))
   await fs.ensureDir(join(templateDir, 'mcp'))
 
+  await fs.writeFile(join(templateDir, 'agents', 'ccg-project-scout.md'), `# Project Scout
+Home: {{PI_AGENT_HOME}}
+Project: {{PI_PROJECT_DIR}}
+`, 'utf-8')
+  await fs.writeFile(join(templateDir, 'agents', 'ccg-planner.md'), `# Planner
+Caps: {{DEV_AGENT_CAP}}/{{GLOBAL_CONCURRENCY_LIMIT}}/{{MAX_SPAWNS_PER_SESSION}}/{{MAX_SUBAGENT_DEPTH}}
+`, 'utf-8')
   await fs.writeFile(join(templateDir, 'agents', 'ccg-backend-builder.md'), `# Backend Builder
 Home: {{PI_AGENT_HOME}}
 Project: {{PI_PROJECT_DIR}}
 Backend: {{BACKEND_MODEL}}
 Caps: {{DEV_AGENT_CAP}}/{{GLOBAL_CONCURRENCY_LIMIT}}/{{MAX_SPAWNS_PER_SESSION}}/{{MAX_SUBAGENT_DEPTH}}
 `, 'utf-8')
+  await fs.writeFile(join(templateDir, 'agents', 'ccg-frontend-builder.md'), options.badAgent
+    ? `legacy codeagent-wrapper residue
+`
+    : `# Frontend Builder
+Frontend: {{FRONTEND_MODEL}}
+Project: {{PI_PROJECT_DIR}}
+`, 'utf-8')
+  await fs.writeFile(join(templateDir, 'agents', 'ccg-test-runner.md'), `# Test Runner
+Review: {{REVIEW_MODEL}}
+`, 'utf-8')
   await fs.writeFile(join(templateDir, 'agents', 'ccg-reviewer.md'), `# Reviewer
 Review: {{REVIEW_MODEL}}
 Frontend: {{FRONTEND_MODEL}}
 `, 'utf-8')
-
-  if (options.badAgent) {
-    await fs.writeFile(join(templateDir, 'agents', 'ccg-bad.md'), `legacy codeagent-wrapper residue
-`, 'utf-8')
-  }
 
   await fs.writeFile(join(templateDir, 'chains', 'ccg-plan.chain.md'), `# Plan Chain
 Pi home: {{PI_AGENT_HOME}}
@@ -345,7 +357,7 @@ describe('installPiWorkflow', () => {
 
     expect(result.success).toBe(false)
     expect(result.errors.some(error => error.includes('codeagent-wrapper'))).toBe(true)
-    expect(await fs.pathExists(join(piHome, 'agents', 'ccg-bad.md'))).toBe(false)
+    expect(await fs.pathExists(join(piHome, 'agents', 'ccg-frontend-builder.md'))).toBe(false)
     expect(await fs.pathExists(join(piHome, 'agents', 'ccg-backend-builder.md'))).toBe(true)
   })
 

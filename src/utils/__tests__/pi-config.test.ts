@@ -8,6 +8,7 @@ import {
   computeRequiredSpawns,
   mergePiSettingsSubagents,
   mergeSubagentExtensionConfig,
+  reconcilePiSettingsSubagents,
   type PiModelsFile,
   type PiSettingsFile,
 } from '../pi-config'
@@ -121,6 +122,76 @@ describe('mergePiSettingsSubagents', () => {
         },
       },
     })
+  })
+})
+
+describe('reconcilePiSettingsSubagents', () => {
+  it('merges active overrides, removes retired overrides, preserves unrelated settings, and is idempotent', async () => {
+    const settingsPath = join(tempRoot('settings-reconcile'), 'settings.json')
+    const original: PiSettingsFile = {
+      userTopLevel: true,
+      subagents: {
+        defaultModel: 'demo/default',
+        agentOverrides: {
+          'ccg-backend-builder': {
+            model: 'old/backend',
+            tools: ['Read'],
+          },
+          'ccg-miniprogram-builder': {
+            model: 'old/frontend',
+            tools: ['Edit'],
+          },
+          'user-agent': {
+            disabled: false,
+          },
+        },
+      },
+    }
+    await fs.ensureDir(join(settingsPath, '..'))
+    await fs.writeJson(settingsPath, original, { spaces: 2 })
+
+    const activePatch = {
+      agentOverrides: {
+        'ccg-backend-builder': { model: 'new/backend' },
+        'ccg-frontend-builder': { model: 'new/frontend' },
+        'ccg-reviewer': { model: 'new/review' },
+        'ccg-test-runner': { model: 'new/review' },
+      },
+    }
+
+    const first = await reconcilePiSettingsSubagents(
+      activePatch,
+      ['ccg-miniprogram-builder'],
+      settingsPath,
+    )
+
+    expect(first).toEqual({ changed: true, backupPath: `${settingsPath}.ccg-bak` })
+    expect(await fs.readJson(`${settingsPath}.ccg-bak`)).toEqual(original)
+
+    const reconciled = await fs.readJson(settingsPath) as PiSettingsFile
+    expect(reconciled.userTopLevel).toBe(true)
+    expect(reconciled.subagents?.defaultModel).toBe('demo/default')
+    expect(reconciled.subagents?.agentOverrides?.['user-agent']).toEqual({ disabled: false })
+    expect(reconciled.subagents?.agentOverrides?.['ccg-backend-builder']).toEqual({
+      model: 'new/backend',
+      tools: ['Read'],
+    })
+    expect(reconciled.subagents?.agentOverrides?.['ccg-frontend-builder']).toEqual({ model: 'new/frontend' })
+    expect(reconciled.subagents?.agentOverrides?.['ccg-reviewer']).toEqual({ model: 'new/review' })
+    expect(reconciled.subagents?.agentOverrides?.['ccg-test-runner']).toEqual({ model: 'new/review' })
+    expect(reconciled.subagents?.agentOverrides?.['ccg-miniprogram-builder']).toBeUndefined()
+    expect(reconciled.subagents?.agentOverrides?.['ccg-project-scout']).toBeUndefined()
+    expect(reconciled.subagents?.agentOverrides?.['ccg-planner']).toBeUndefined()
+
+    const second = await reconcilePiSettingsSubagents(
+      activePatch,
+      ['ccg-miniprogram-builder'],
+      settingsPath,
+    )
+
+    expect(second).toEqual({ changed: false, backupPath: null })
+    const files = await fs.readdir(join(settingsPath, '..'))
+    expect(files.filter(file => file.endsWith('.ccg-bak'))).toEqual(['settings.json.ccg-bak'])
   })
 })
 
@@ -239,8 +310,34 @@ describe('mergeSubagentExtensionConfig', () => {
   })
 })
 
+describe('atomic Pi JSON writes', () => {
+  it('commits complete JSON files without leaving same-directory temp files', async () => {
+    const root = tempRoot('atomic-writes')
+    const settingsPath = join(root, 'settings.json')
+    const modelsPath = join(root, 'models.json')
+    const configPath = join(root, 'subagent-config.json')
+
+    await mergePiSettingsSubagents({
+      agentOverrides: { 'ccg-backend-builder': { model: 'demo/backend' } },
+    }, settingsPath)
+    await appendPiProviders({
+      demo: {
+        api: 'openai-completions',
+        baseUrl: 'https://example.invalid/v1',
+        models: ['demo-model'],
+      },
+    }, { modelsPath })
+    await mergeSubagentExtensionConfig({}, configPath)
+
+    expect(await fs.readJson(settingsPath)).toBeTruthy()
+    expect(await fs.readJson(modelsPath)).toBeTruthy()
+    expect(await fs.readJson(configPath)).toBeTruthy()
+    expect((await fs.readdir(root)).filter(file => file.endsWith('.ccg-tmp'))).toEqual([])
+  })
+})
+
 describe('Pi parallelism formulas', () => {
-  it('defaults produce effective=4 and requiredSpawns=8 within max spawns 24', () => {
+  it('defaults allow a four-builder wave within max spawns 24', () => {
     const effective = computeEffectiveDevParallelism({
       devAgentCap: 4,
       globalConcurrencyLimit: 4,
@@ -249,8 +346,14 @@ describe('Pi parallelism formulas', () => {
     })
 
     expect(effective).toBe(4)
-    expect(computeRequiredSpawns(effective)).toBe(8)
-    expect(computeRequiredSpawns(effective)).toBeLessThanOrEqual(24)
+    expect(computeRequiredSpawns(4)).toBe(8)
+    expect(computeRequiredSpawns(4)).toBeLessThanOrEqual(24)
+  })
+
+  it('required spawn budget uses actual builder count, not effective concurrency', () => {
+    expect(computeRequiredSpawns(0)).toBe(4)
+    expect(computeRequiredSpawns(1)).toBe(5)
+    expect(computeRequiredSpawns(7)).toBe(11)
   })
 
   it('effective parallelism picks the smallest cap', () => {

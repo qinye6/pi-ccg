@@ -6,25 +6,17 @@ import inquirer from 'inquirer'
 import ora from 'ora'
 import { join } from 'pathe'
 import { init } from './init'
+import { REQUIRED_PI_EXTENSION, selectedExtensionMetadata } from '../utils/pi-extensions'
 import { checkForUpdates } from '../utils/version'
 import {
   CCG_MANAGED_BLOCK_START,
+  CCG_PI_ACTIVE_AGENT_NAMES,
   getCcgMetadataPath,
   getPiAgentHome,
   getProjectAgentsMdPath,
   getProjectPiChainsDir,
   getProjectPiPromptsDir,
 } from '../utils/pi-paths'
-
-const PI_AGENTS = [
-  'ccg-project-scout',
-  'ccg-planner',
-  'ccg-backend-builder',
-  'ccg-frontend-builder',
-  'ccg-miniprogram-builder',
-  'ccg-test-runner',
-  'ccg-reviewer',
-]
 
 async function readMetadata(path = getCcgMetadataPath()): Promise<CcgInstallerMetadata | null> {
   if (!(await fs.pathExists(path))) return null
@@ -36,36 +28,52 @@ async function readMetadata(path = getCcgMetadataPath()): Promise<CcgInstallerMe
   }
 }
 
-function initOptionsFromMetadata(metadata: CcgInstallerMetadata | null): InitOptions {
+export function initOptionsFromMetadata(metadata: CcgInstallerMetadata | null): InitOptions {
+  const extensionIds = selectedExtensionMetadata(metadata?.extensions)
+    .filter(entry => entry.id !== REQUIRED_PI_EXTENSION.id)
+    .map(entry => entry.id)
+
   return {
     lang: metadata?.language ?? 'zh-CN',
     skipPrompt: true,
     force: true,
+    preserveExtensions: true,
+    extensionIds,
+    noOptionalExtensions: extensionIds.length === 0,
     installProjectAssets: metadata?.scope !== 'user',
-    frontendModel: metadata?.lastChoices.frontendModel,
-    backendModel: metadata?.lastChoices.backendModel,
-    reviewModel: metadata?.lastChoices.reviewModel,
-    devAgentCap: metadata?.lastChoices.caps.devAgentCap,
-    globalConcurrencyLimit: metadata?.lastChoices.caps.globalConcurrencyLimit,
-    maxSpawnsPerSession: metadata?.lastChoices.caps.maxSpawnsPerSession,
-    maxSubagentDepth: metadata?.lastChoices.caps.maxSubagentDepth,
+    frontendModel: metadata?.lastChoices?.frontendModel,
+    backendModel: metadata?.lastChoices?.backendModel,
+    reviewModel: metadata?.lastChoices?.reviewModel,
+    devAgentCap: metadata?.lastChoices?.caps?.devAgentCap,
+    globalConcurrencyLimit: metadata?.lastChoices?.caps?.globalConcurrencyLimit,
+    maxSpawnsPerSession: metadata?.lastChoices?.caps?.maxSpawnsPerSession,
+    maxSubagentDepth: metadata?.lastChoices?.caps?.maxSubagentDepth,
   }
 }
 
-function runLatestInit(options: InitOptions, cwd: string): Promise<void> {
+export function buildLatestInitArgs(options: InitOptions): string[] {
   const args = ['--yes', 'pi-ccg@latest', 'init', '--skip-prompt', '--force']
   const add = (flag: string, value: string | number | undefined): void => {
     if (value !== undefined && String(value).trim()) args.push(flag, String(value))
   }
   add('--lang', options.lang)
+  add('--install-dir', options.installDir)
   add('--frontend-model', options.frontendModel)
   add('--backend-model', options.backendModel)
   add('--review-model', options.reviewModel)
+  if (options.extensionIds && options.extensionIds.length > 0) add('--extensions', options.extensionIds.join(','))
+  else args.push('--no-optional-extensions')
+  if (options.preserveExtensions) args.push('--preserve-extensions')
   add('--dev-agent-cap', options.devAgentCap)
   add('--global-concurrency-limit', options.globalConcurrencyLimit)
   add('--max-spawns-per-session', options.maxSpawnsPerSession)
   add('--max-subagent-depth', options.maxSubagentDepth)
   args.push(options.installProjectAssets === false ? '--no-project-assets' : '--project-assets')
+  return args
+}
+
+function runLatestInit(options: InitOptions, cwd: string): Promise<void> {
+  const args = buildLatestInitArgs(options)
 
   return new Promise((resolve, reject) => {
     const child = spawn('npx', args, {
@@ -81,7 +89,7 @@ function runLatestInit(options: InitOptions, cwd: string): Promise<void> {
 
 async function verifyPiAssets(piHome: string, projectDir: string, projectAssets: boolean): Promise<string[]> {
   const missing: string[] = []
-  for (const agent of PI_AGENTS) {
+  for (const agent of CCG_PI_ACTIVE_AGENT_NAMES) {
     const path = join(piHome, 'agents', `${agent}.md`)
     if (!(await fs.pathExists(path))) missing.push(path)
   }
@@ -137,7 +145,11 @@ export async function performUpdate(options: PerformPiUpdateOptions = {}): Promi
   return { success: errors.length === 0, errors }
 }
 
-export async function update(): Promise<void> {
+export interface UpdateCommandOptions {
+  installDir?: string
+}
+
+export async function update(options: UpdateCommandOptions = {}): Promise<void> {
   console.log(ansis.cyan.bold('\n  CCG Pi Update\n'))
   const spinner = ora('检查 npm 最新版本...').start()
 
@@ -159,7 +171,8 @@ export async function update(): Promise<void> {
     console.log(`  当前版本: ${ansis.yellow(`v${currentVersion}`)}`)
     console.log(`  最新版本: ${ansis.green(`v${latestVersion}`)}`)
   }
-  console.log(ansis.gray('  更新只重装 CCG managed Pi assets；用户 providers、凭据、mcp.json 与无关 settings 保持不变。\n'))
+  console.log(ansis.gray('  更新只重装 CCG managed Pi assets；用户 providers、凭据、mcp.json、扩展选择与无关 settings 保持不变。'))
+  console.log(ansis.gray('  更新不会执行第三方 package 操作；请使用 `ccg extensions` 单独管理扩展。\n'))
 
   const { confirm } = await inquirer.prompt<{ confirm: boolean }>([{
     type: 'confirm',
@@ -170,7 +183,10 @@ export async function update(): Promise<void> {
   if (!confirm) return
 
   const installSpinner = ora('安装并验证 Pi workflow...').start()
-  const result = await performUpdate({ useLatestPackage: hasUpdate })
+  const result = await performUpdate({
+    useLatestPackage: hasUpdate,
+    piHome: options.installDir,
+  })
   if (!result.success) {
     installSpinner.fail('Pi workflow 更新失败')
     for (const error of result.errors) console.log(ansis.red(`  - ${error}`))
@@ -178,5 +194,5 @@ export async function update(): Promise<void> {
   }
 
   installSpinner.succeed('Pi workflow 已更新并通过资产验证')
-  console.log(ansis.gray('  External memory adapter 为 optional/report-only，未安装不会影响更新结果。'))
+  console.log(ansis.gray('  Extension selection preserved; run `ccg extensions` to install, remove, or re-detect third-party packages.'))
 }

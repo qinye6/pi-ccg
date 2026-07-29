@@ -13,7 +13,7 @@ describe('Pi CLI command registration', () => {
     const cli = await configuredCli()
     const names = cli.commands.map(command => command.name)
 
-    expect(names).toEqual(['', 'init', 'update', 'doctor', 'status', 'uninstall'])
+    expect(names).toEqual(['', 'init', 'update', 'extensions', 'doctor', 'status', 'uninstall'])
     expect(names).not.toContain('config mcp')
     expect(names).not.toContain('diagnose-mcp')
     expect(names).not.toContain('fix-mcp')
@@ -53,6 +53,57 @@ describe('Pi CLI command registration', () => {
       maxSpawnsPerSession: 20,
       maxSubagentDepth: 1,
       projectAssets: true,
+    })
+  })
+
+  it('parses explicit extension install flags', async () => {
+    const cli = await configuredCli()
+    cli.parse([
+      'node',
+      'ccg',
+      'init',
+      '--extensions',
+      'mcp-adapter,memory-context',
+      '--install-required-package',
+    ], { run: false })
+
+    expect(cli.options).toMatchObject({
+      extensions: 'mcp-adapter,memory-context',
+      installRequiredPackage: true,
+    })
+  })
+
+  it('maps --no-optional-extensions to a false optionalExtensions option', async () => {
+    const cli = await configuredCli()
+    cli.parse(['node', 'ccg', 'init', '--no-optional-extensions'], { run: false })
+
+    expect(cli.options.optionalExtensions).toBe(false)
+  })
+
+  it('parses a custom Pi home for update', async () => {
+    const cli = await configuredCli()
+    cli.parse(['node', 'ccg', 'update', '--install-dir', '/tmp/custom-pi-home'], { run: false })
+
+    expect(cli.matchedCommand?.name).toBe('update')
+    expect(cli.options.installDir).toBe('/tmp/custom-pi-home')
+  })
+
+  it.each(['doctor', 'status'])('parses custom Pi and project homes for %s', async (command) => {
+    const cli = await configuredCli()
+    cli.parse([
+      'node',
+      'ccg',
+      command,
+      '--install-dir',
+      '/tmp/custom-pi-home',
+      '--project-dir',
+      '/tmp/custom-project',
+    ], { run: false })
+
+    expect(cli.matchedCommand?.name).toBe(command)
+    expect(cli.options).toMatchObject({
+      installDir: '/tmp/custom-pi-home',
+      projectDir: '/tmp/custom-project',
     })
   })
 

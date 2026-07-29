@@ -2,13 +2,13 @@
 
 > [根目录](../CLAUDE.md) > **templates**
 
-**Last Updated**: 2026-07-27 (v3.2.4)
+**Last Updated**: 2026-07-28 (v3.2.5)
 
 ## 当前发布面
 
 `templates/pi/` 是 CCG 当前唯一安装和 npm 发布的模板目录。`package.json#files` 只包含 `templates/pi/`，不包含旧 commands、hooks、prompts、skills、rules 或 wrapper 资产。
 
-## Pi assets（13 个）
+## Pi assets（12 个）
 
 ```text
 templates/pi/
@@ -18,7 +18,6 @@ templates/pi/
 │   ├── ccg-planner.md
 │   ├── ccg-backend-builder.md
 │   ├── ccg-frontend-builder.md
-│   ├── ccg-miniprogram-builder.md
 │   ├── ccg-test-runner.md
 │   └── ccg-reviewer.md
 ├── chains/
@@ -32,6 +31,8 @@ templates/pi/
 └── mcp/
     └── nocturne.example.json
 ```
+
+`ccg-miniprogram-builder` 已退休，不属于当前 active runtime。小程序/微信只作为 frontend `componentProfile`，由通用 `ccg-frontend-builder` 实例处理。
 
 ## 安装目标
 
@@ -47,11 +48,17 @@ templates/pi/
 
 ## Agent 设计
 
+- 当前 runtime 只有六个固定 role template：scout、planner、backend-builder、frontend-builder、test-runner、reviewer。
 - 所有 agent 使用 `defaultContext: fresh`。
 - supervisor 调用使用 `context: "fresh"`，跨 run context 由 task string 内联。
-- `ccg-project-scout`、`ccg-planner` 和三个 builder 使用 Pi native project memory。
+- `ccg-project-scout`、`ccg-planner` 和所有 backend/frontend builder 实例使用必需 `pi-subagents` package 提供的 per-agent persistent `memory` frontmatter。
+- 该 memory 能力独立于 Pi core parent/session/project memory，由同一个必需 package 提供，不是第二个 extension。
 - `ccg-reviewer`、`ccg-test-runner` 不启用 memory，并设置 `completionGuard: false`。
+- Pi 根据 planner contract 动态派生 `N` 个 frontend builder 实例和 `M` 个 backend builder 实例，按 component/profile/wave 执行。
 - builder 只实现分配的组件，不规划、不派生下级 agent。
+- supervisor 必须在 builder 写入前完成 contract relay 并等待 supervisor `START` approval。
+- builder 必须遵守 ownership barrier；跨组件修改需回报 supervisor，而不是擅自修改。
+- builder 完成时必须输出 `FINISH` handoff，包含 `componentId`、变更文件、验证、假设与风险。
 - test/review failure 必须携带 `componentId`，供 supervisor 回派 owning builder。
 - 定向修复最多两轮。
 
@@ -65,8 +72,8 @@ templates/pi/
 | `{{GLOBAL_CONCURRENCY_LIMIT}}` | 全局并发上限 |
 | `{{MAX_SPAWNS_PER_SESSION}}` | 单会话 spawn 上限 |
 | `{{MAX_SUBAGENT_DEPTH}}` | 最大嵌套深度 |
-| `{{FRONTEND_MODEL}}` | frontend/miniprogram builder model |
-| `{{BACKEND_MODEL}}` | backend builder model |
+| `{{FRONTEND_MODEL}}` | generic frontend builder instances model |
+| `{{BACKEND_MODEL}}` | generic backend builder instances model |
 | `{{REVIEW_MODEL}}` | reviewer/test-runner model |
 | managed block markers | `AGENTS.md` 受管区边界 |
 
@@ -85,6 +92,14 @@ templates/pi/
 ## 凭据规则
 
 模板、agent prompt、chain、task、log、summary 和示例中不得出现真实 API Key/token。`nocturne.example.json` 只能包含 placeholder/无凭据示例。真实 MCP 凭据仅允许存在于用户自管且不覆盖的 `<project>/.pi/mcp.json`。
+
+## 扩展与上下文边界
+
+`pi-subagents` 是唯一 required package。推荐扩展为 `pi-mcp-adapter`、`pi-memctx`、`pi-session-continuity`；`pi-pr-review` 可选；实验性 `@vigolium/piolium` 默认不选。模板不得假定 optional tool 一定存在：可用时按需调用，不可用时以 task-string plan/handoff 和内建 reviewer 降级。
+
+静态角色说明与 coordination rules 保持稳定，运行期 plan、component data、handoff、findings 放在 task string 后部。lazy MCP proxy 与按需 memory injection 用于降低上下文抖动，但 provider cache hit 不作承诺。
+
+CCG 只写 `.pi/mcp.json.example`，不覆盖、不删除、不输出 `.pi/mcp.json` 的值。真实凭据不得进入模板、agent prompt、chain、task、消息、日志、summary 或 metadata。
 
 ## 历史目录
 

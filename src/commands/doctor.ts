@@ -1,10 +1,12 @@
-import { spawnSync } from 'node:child_process'
+import type { InstallScope, PiExtensionMetadataEntry } from '../types'
 import ansis from 'ansis'
 import fs from 'fs-extra'
 import { join } from 'pathe'
 import { version as packageVersion } from '../../package.json'
 import {
   CCG_MANAGED_BLOCK_START,
+  CCG_PI_ACTIVE_AGENT_NAMES,
+  CCG_PI_RETIRED_AGENT_NAMES,
   getCcgMetadataPath,
   getPiAgentHome,
   getPiModelsPath,
@@ -15,10 +17,21 @@ import {
   getSubagentExtensionConfigPath,
 } from '../utils/pi-paths'
 import { computeEffectiveDevParallelism, computeRequiredSpawns } from '../utils/pi-config'
+import { PI_EXTENSION_CATALOG, REQUIRED_PI_EXTENSION } from '../utils/pi-extensions'
+import {
+  inspectPiRuntime,
+  PI_SUBAGENTS_INSTALL_COMMAND,
+} from '../utils/pi-runtime'
 
 const OK = ansis.green('✓')
 const WARN = ansis.yellow('⚠')
 const FAIL = ansis.red('✗')
+const SKIP = ansis.gray('–')
+
+interface DoctorOptions {
+  installDir?: string
+  projectDir?: string
+}
 
 interface Check {
   label: string
@@ -33,9 +46,39 @@ async function readJson(path: string): Promise<Record<string, unknown> | null> {
   catch { return null }
 }
 
-function piVersion(): string | null {
-  const result = spawnSync('pi', ['--version'], { encoding: 'utf-8', shell: process.platform === 'win32' })
-  return result.status === 0 ? (result.stdout || result.stderr).trim() : null
+function installScope(metadata: Record<string, unknown> | null): InstallScope | null {
+  return metadata?.scope === 'user' || metadata?.scope === 'user-project'
+    ? metadata.scope
+    : null
+}
+
+function extensionMetadata(metadata: Record<string, unknown> | null): PiExtensionMetadataEntry[] {
+  if (!Array.isArray(metadata?.extensions)) return []
+  return metadata.extensions.filter((entry): entry is PiExtensionMetadataEntry => {
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) return false
+    const value = entry as Record<string, unknown>
+    return typeof value.id === 'string'
+      && typeof value.packageSpec === 'string'
+      && typeof value.selected === 'boolean'
+      && (value.ownership === 'ccg-installed' || value.ownership === 'adopted' || value.ownership === 'missing')
+  })
+}
+
+async function firstExisting(paths: string[]): Promise<string | null> {
+  for (const path of paths) {
+    if (await fs.pathExists(path)) return path
+  }
+  return null
+}
+
+function assetCandidates(
+  scope: InstallScope | null,
+  userPath: string,
+  projectPath: string,
+): string[] {
+  if (scope === 'user') return [userPath]
+  if (scope === 'user-project') return [projectPath]
+  return [projectPath, userPath]
 }
 
 function modelReferences(settings: Record<string, unknown> | null): string[] {
@@ -70,68 +113,217 @@ function configuredModels(models: Record<string, unknown> | null): Set<string> {
   return result
 }
 
-async function collectChecks(projectDir = process.cwd()): Promise<Check[]> {
-  const piHome = getPiAgentHome()
+async function collectChecks(options: DoctorOptions = {}): Promise<Check[]> {
+  const projectDir = options.projectDir ?? process.cwd()
+  const piHome = options.installDir ?? getPiAgentHome()
   const checks: Check[] = []
-  const version = piVersion()
-  checks.push({ label: 'Pi CLI', status: version ? OK : FAIL, detail: version || 'not found in PATH', required: true })
+  const metadataPath = getCcgMetadataPath(piHome)
+  const metadataExists = await fs.pathExists(metadataPath)
+  const metadata = await readJson(metadataPath)
+  const scope = installScope(metadata)
+  const runtime = inspectPiRuntime(piHome)
 
-  const agentNames = ['ccg-project-scout', 'ccg-planner', 'ccg-backend-builder', 'ccg-frontend-builder', 'ccg-miniprogram-builder', 'ccg-test-runner', 'ccg-reviewer']
+  checks.push({
+    label: 'Pi CLI',
+    status: runtime.piAvailable ? OK : FAIL,
+    detail: runtime.piVersion ?? 'not found in PATH',
+    required: true,
+  })
+  checks.push({
+    label: 'pi-subagents package',
+    status: runtime.piSubagentsAvailable ? OK : FAIL,
+    detail: runtime.piSubagentsAvailable
+      ? 'installed (required runtime package)'
+      : runtime.piAvailable
+        ? `missing; install with: ${PI_SUBAGENTS_INSTALL_COMMAND}`
+        : `install Pi CLI first, then run: ${PI_SUBAGENTS_INSTALL_COMMAND}`,
+    required: true,
+  })
+
+  const installedPackages = new Map(runtime.packages.map(item => [item.packageSpec, item.version]))
+  const extensionEntries = new Map(extensionMetadata(metadata).map(entry => [entry.id, entry]))
+  for (const extension of PI_EXTENSION_CATALOG) {
+    if (extension.id === REQUIRED_PI_EXTENSION.id) continue
+    const entry = extensionEntries.get(extension.id)
+    const installedVersion = installedPackages.get(extension.packageSpec)
+    if (!entry?.selected) {
+      checks.push({
+        label: extension.label,
+        status: SKIP,
+        detail: installedPackages.has(extension.packageSpec)
+          ? `not selected by CCG; package detected${installedVersion ? ` (${installedVersion})` : ''}`
+          : `not selected [${extension.tier}]`,
+      })
+      continue
+    }
+    checks.push({
+      label: extension.label,
+      status: installedPackages.has(extension.packageSpec) ? OK : WARN,
+      detail: installedPackages.has(extension.packageSpec)
+        ? `installed${installedVersion ? ` (${installedVersion})` : ''}; ${entry.ownership}`
+        : `selected but missing; install with: pi install ${extension.packageSpec}`,
+    })
+  }
+  if (runtime.packageListError) {
+    checks.push({
+      label: 'Pi package inventory',
+      status: WARN,
+      detail: 'unable to read package inventory; run `pi list --no-approve` for details',
+    })
+  }
+
   const missingAgents: string[] = []
-  for (const name of agentNames) {
+  for (const name of CCG_PI_ACTIVE_AGENT_NAMES) {
     if (!(await fs.pathExists(join(piHome, 'agents', `${name}.md`)))) missingAgents.push(name)
   }
   checks.push({
     label: 'Pi agents', status: missingAgents.length === 0 ? OK : FAIL,
-    detail: missingAgents.length === 0 ? `${agentNames.length}/${agentNames.length} installed` : `missing: ${missingAgents.join(', ')}`,
+    detail: missingAgents.length === 0
+      ? `${CCG_PI_ACTIVE_AGENT_NAMES.length}/${CCG_PI_ACTIVE_AGENT_NAMES.length} installed`
+      : `missing: ${missingAgents.join(', ')}`,
     required: true,
   })
 
-  const chain = join(getProjectPiChainsDir(projectDir), 'ccg-plan.chain.md')
-  const prompt = join(getProjectPiPromptsDir(projectDir), 'ccg-go.md')
-  checks.push({ label: 'Project chain', status: await fs.pathExists(chain) ? OK : WARN, detail: chain })
-  checks.push({ label: 'Prompt workflow', status: await fs.pathExists(prompt) ? OK : WARN, detail: prompt })
+  const staleAgents: string[] = []
+  for (const name of CCG_PI_RETIRED_AGENT_NAMES) {
+    if (await fs.pathExists(join(piHome, 'agents', `${name}.md`))) staleAgents.push(name)
+  }
+  checks.push({
+    label: 'Retired Pi agents',
+    status: staleAgents.length > 0 ? WARN : OK,
+    detail: staleAgents.length > 0
+      ? `stale legacy asset(s) preserved: ${staleAgents.join(', ')}`
+      : 'no retired CCG agent files detected',
+  })
 
-  const agentsMd = getProjectAgentsMdPath(projectDir)
-  const managedBlock = await fs.pathExists(agentsMd)
-    && (await fs.readFile(agentsMd, 'utf-8')).includes(CCG_MANAGED_BLOCK_START)
-  checks.push({ label: 'AGENTS.md block', status: managedBlock ? OK : WARN, detail: managedBlock ? 'CCG managed block present' : 'not installed in current project' })
+  const chain = await firstExisting(assetCandidates(
+    scope,
+    join(piHome, 'chains', 'ccg-plan.chain.md'),
+    join(getProjectPiChainsDir(projectDir), 'ccg-plan.chain.md'),
+  ))
+  const prompt = await firstExisting(assetCandidates(
+    scope,
+    join(piHome, 'prompts', 'ccg-go.md'),
+    join(getProjectPiPromptsDir(projectDir), 'ccg-go.md'),
+  ))
+  checks.push({
+    label: 'Plan chain',
+    status: chain ? OK : WARN,
+    detail: chain ?? `ccg-plan.chain.md missing for ${scope ?? 'unknown'} install scope`,
+  })
+  checks.push({
+    label: 'Prompt workflow',
+    status: prompt ? OK : WARN,
+    detail: prompt ?? `ccg-go.md missing for ${scope ?? 'unknown'} install scope`,
+  })
 
-  const settings = await readJson(getPiSettingsPath())
+  if (scope === 'user') {
+    checks.push({
+      label: 'AGENTS.md block',
+      status: OK,
+      detail: 'not required for user-only install scope',
+    })
+  }
+  else {
+    const agentsMd = getProjectAgentsMdPath(projectDir)
+    const managedBlock = await fs.pathExists(agentsMd)
+      && (await fs.readFile(agentsMd, 'utf-8')).includes(CCG_MANAGED_BLOCK_START)
+    checks.push({
+      label: 'AGENTS.md block',
+      status: managedBlock ? OK : WARN,
+      detail: managedBlock ? 'CCG managed block present' : 'not installed in current project',
+    })
+  }
+
+  const settings = await readJson(getPiSettingsPath(piHome))
   const references = modelReferences(settings)
-  checks.push({ label: 'Model overrides', status: references.length > 0 ? OK : WARN, detail: references.length > 0 ? `${references.length} agent override(s)` : 'agents inherit Pi default model' })
+  checks.push({
+    label: 'Model overrides',
+    status: references.length > 0 ? OK : WARN,
+    detail: references.length > 0 ? `${references.length} agent override(s)` : 'agents inherit Pi default model',
+  })
 
-  const models = configuredModels(await readJson(getPiModelsPath()))
+  const models = configuredModels(await readJson(getPiModelsPath(piHome)))
   const unresolved = references.filter(reference => reference.includes('/') && !models.has(reference))
-  checks.push({ label: 'Model references', status: unresolved.length === 0 ? OK : WARN, detail: unresolved.length === 0 ? 'resolved or delegated to Pi built-ins' : `${unresolved.length} reference(s) not found in models.json` })
+  checks.push({
+    label: 'Model references',
+    status: unresolved.length === 0 ? OK : WARN,
+    detail: unresolved.length === 0
+      ? 'resolved or delegated to Pi built-ins'
+      : `${unresolved.length} reference(s) not found in models.json`,
+  })
 
-  const caps = await readJson(getSubagentExtensionConfigPath())
+  const caps = await readJson(getSubagentExtensionConfigPath(piHome))
   const parallel = caps?.parallel
   const concurrency = Number(caps?.globalConcurrencyLimit)
   const spawns = Number(caps?.maxSubagentSpawnsPerSession)
   const depth = Number(caps?.maxSubagentDepth)
-  const parallelConcurrency = typeof parallel === 'object' && parallel !== null ? Number((parallel as Record<string, unknown>).concurrency) : Number.NaN
-  const maxTasks = typeof parallel === 'object' && parallel !== null ? Number((parallel as Record<string, unknown>).maxTasks) : Number.NaN
-  const validCaps = [concurrency, spawns, depth, parallelConcurrency, maxTasks].every(value => Number.isInteger(value) && value > 0)
-  const effective = validCaps ? computeEffectiveDevParallelism({ devAgentCap: maxTasks, globalConcurrencyLimit: concurrency, parallelConcurrency, parallelMaxTasks: maxTasks }) : 0
-  const spawnBudgetOk = validCaps && computeRequiredSpawns(effective) <= spawns
+  const parallelConcurrency = typeof parallel === 'object' && parallel !== null
+    ? Number((parallel as Record<string, unknown>).concurrency)
+    : Number.NaN
+  const maxTasks = typeof parallel === 'object' && parallel !== null
+    ? Number((parallel as Record<string, unknown>).maxTasks)
+    : Number.NaN
+  const validCaps = [concurrency, spawns, depth, parallelConcurrency, maxTasks]
+    .every(value => Number.isInteger(value) && value > 0)
+  const effective = validCaps
+    ? computeEffectiveDevParallelism({
+        devAgentCap: maxTasks,
+        globalConcurrencyLimit: concurrency,
+        parallelConcurrency,
+        parallelMaxTasks: maxTasks,
+      })
+    : 0
+  const baselineSpawns = computeRequiredSpawns(effective)
+  const spawnBudgetOk = validCaps && baselineSpawns <= spawns
   checks.push({
     label: 'Subagent caps', status: validCaps && spawnBudgetOk ? OK : FAIL,
-    detail: validCaps ? `effective=${effective}, requiredSpawns=${computeRequiredSpawns(effective)}, budget=${spawns}, depth=${depth}` : 'missing or invalid config',
+    detail: validCaps
+      ? `effective=${effective}, baselineSpawns=${baselineSpawns}, budget=${spawns}, depth=${depth}`
+      : 'missing or invalid config',
     required: true,
   })
 
-  const metadata = await readJson(getCcgMetadataPath())
-  checks.push({ label: 'CCG metadata', status: metadata ? OK : WARN, detail: metadata ? `v${String(metadata.version ?? '?')}` : 'not found' })
+  checks.push({
+    label: 'CCG metadata',
+    status: metadata ? OK : WARN,
+    detail: metadata
+      ? `v${String(metadata.version ?? '?')} (${scope ?? 'unknown scope'})`
+      : metadataExists
+        ? 'unreadable or invalid'
+        : 'not found',
+  })
 
   const memoryDir = join(projectDir, '.pi', 'agent-memory')
-  checks.push({ label: 'Project memory', status: await fs.pathExists(memoryDir) ? OK : WARN, detail: await fs.pathExists(memoryDir) ? 'native Pi project memory present' : 'created lazily when memory-enabled agents run' })
-  checks.push({ label: 'External memory adapter', status: WARN, detail: 'optional/report-only; CCG does not require or manage real credentials' })
+  const memoryExists = await fs.pathExists(memoryDir)
+  checks.push({
+    label: 'pi-subagents memory',
+    status: memoryExists ? OK : WARN,
+    detail: memoryExists
+      ? 'project-scoped per-agent memory present'
+      : 'created lazily when memory-enabled pi-subagents agents run',
+  })
+  const mcpAdapterInstalled = installedPackages.has('npm:pi-mcp-adapter')
+  const mcpConfig = await firstExisting([
+    join(projectDir, '.pi', 'mcp.json'),
+    join(projectDir, '.mcp.json'),
+    join(piHome, 'mcp.json'),
+  ])
+  const mcpExample = await fs.pathExists(join(projectDir, '.pi', 'mcp.json.example'))
+  checks.push({
+    label: 'MCP integration',
+    status: mcpAdapterInstalled && mcpConfig ? OK : WARN,
+    detail: mcpAdapterInstalled
+      ? mcpConfig
+        ? `adapter installed; user-managed config detected at ${mcpConfig}`
+        : `adapter installed; configure a user-managed MCP file${mcpExample ? ' (example available)' : ''}`
+      : 'adapter not installed; manage with `ccg extensions`',
+  })
   return checks
 }
 
-export async function doctor(): Promise<void> {
-  const checks = await collectChecks()
+export async function doctor(options: DoctorOptions = {}): Promise<void> {
+  const checks = await collectChecks(options)
   console.log(ansis.cyan.bold(`\n  CCG Pi Doctor v${packageVersion}\n`))
   for (const check of checks) console.log(`  ${check.status} ${check.label.padEnd(24)} ${ansis.gray(check.detail)}`)
   const failures = checks.filter(check => check.required && check.status === FAIL).length
@@ -140,15 +332,25 @@ export async function doctor(): Promise<void> {
   console.log()
 }
 
-export async function status(): Promise<void> {
-  const checks = await collectChecks()
-  const metadata = await readJson(getCcgMetadataPath())
-  const settings = await readJson(getPiSettingsPath())
+export async function status(options: DoctorOptions = {}): Promise<void> {
+  const piHome = options.installDir ?? getPiAgentHome()
+  const checks = await collectChecks(options)
+  const metadata = await readJson(getCcgMetadataPath(piHome))
+  const settings = await readJson(getPiSettingsPath(piHome))
+  const runtime = inspectPiRuntime(piHome)
+  const entries = extensionMetadata(metadata)
+  const selected = entries.filter(entry => entry.id !== REQUIRED_PI_EXTENSION.id && entry.selected)
+  const installed = new Set(runtime.packages.map(item => item.packageSpec))
+  const selectedInstalled = selected.filter(entry => installed.has(entry.packageSpec)).length
+  const owned = entries.filter(entry => entry.ownership === 'ccg-installed').length
+  const adopted = entries.filter(entry => entry.ownership === 'adopted').length
   console.log(ansis.cyan.bold(`\n  CCG for Pi CLI v${packageVersion}\n`))
-  console.log(`  Pi CLI:       ${piVersion() ?? 'not found'}`)
+  console.log(`  Pi CLI:       ${runtime.piVersion ?? 'not found'}`)
+  console.log(`  pi-subagents: ${runtime.piSubagentsAvailable ? 'installed' : 'missing (required)'}`)
+  console.log(`  Extensions:   ${selectedInstalled}/${selected.length} selected installed; owned=${owned}, adopted=${adopted}`)
   console.log(`  Install scope:${metadata ? ` ${String(metadata.scope ?? 'unknown')}` : ' not installed'}`)
   console.log(`  Agent models: ${modelReferences(settings).length || 'inherit default'}`)
   console.log(`  Health:       ${checks.filter(check => check.required && check.status === FAIL).length === 0 ? 'ready' : 'needs attention'}`)
-  console.log(`  Pi home:      ${getPiAgentHome()}`)
+  console.log(`  Pi home:      ${piHome}`)
   console.log()
 }

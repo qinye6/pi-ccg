@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'fs-extra'
+import { dirname } from 'pathe'
 import {
   createDefaultConfig,
   createDefaultMetadata,
@@ -25,6 +26,14 @@ beforeEach(async () => {
 afterEach(async () => {
   await fs.remove(mockHome.path)
 })
+
+async function metadataTempFiles(): Promise<string[]> {
+  const metadataPath = getCcgMetadataPath()
+  const metadataDir = dirname(metadataPath)
+  if (!(await fs.pathExists(metadataDir))) return []
+  return (await fs.readdir(metadataDir))
+    .filter(name => name.includes('ccg-workflow.json.') && name.endsWith('.ccg-tmp'))
+}
 
 describe('createDefaultRouting', () => {
   it('returns antigravity as frontend primary', () => {
@@ -136,6 +145,7 @@ describe('Pi installer metadata', () => {
     await writeCcgMetadata(meta)
 
     expect(await fs.pathExists(getCcgMetadataPath())).toBe(true)
+    expect(await metadataTempFiles()).toEqual([])
     await expect(readCcgMetadata()).resolves.toEqual(meta)
   })
 
@@ -151,6 +161,7 @@ describe('Pi installer metadata', () => {
       maxSpawnsPerSession: 24,
       maxSubagentDepth: 1,
     })
+    expect(meta.extensions).toEqual([])
     expect(meta.managedFiles).toEqual([])
     expect(new Date(meta.createdAt).toISOString()).toBe(meta.createdAt)
     expect(new Date(meta.updatedAt).toISOString()).toBe(meta.updatedAt)
@@ -182,6 +193,7 @@ describe('Pi installer metadata', () => {
       },
     })
 
+    expect(await metadataTempFiles()).toEqual([])
     expect(updated.lastChoices).toEqual({
       provider: 'anthropic',
       frontendModel: 'claude-sonnet-4',

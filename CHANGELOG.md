@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.2.5] - 2026-07-28
+
+### Added
+
+- Added a curated Pi extension catalog with required, recommended, optional, and experimental tiers: `pi-subagents`, `pi-mcp-adapter`, `pi-memctx`, `pi-session-continuity`, `pi-pr-review`, and `@vigolium/piolium`.
+- Added explicit extension selection to the interactive installer and reproducible non-interactive flags. Recommended extensions may be preselected, but third-party package execution always requires user confirmation or explicit flags.
+- Added `ccg extensions` for inspecting, installing, and removing selected Pi packages with package ownership tracking.
+- Added extension readiness, package ownership, and credential-safe MCP configuration checks to `ccg doctor` and `ccg status`.
+
+### Changed
+
+- Expanded `ccg init` to an eleven-stage flow with a dedicated extension-selection stage.
+- Updates now preserve extension selections and ownership metadata without running third-party package operations; package changes are managed separately through `ccg extensions`.
+- Uninstall now removes only packages recorded as `ccg-installed`, while preserving adopted/user-installed packages and user-managed MCP configuration.
+- Documented cache-friendly prompt and context practices: stable prompt prefixes, runtime state at the end of task strings, lazy MCP metadata, and on-demand memory injection. Actual provider prompt-cache hits remain provider-dependent and are not guaranteed.
+
+### Security
+
+- Pi package lifecycle commands use validated `npm:` package specs and argument-array process execution rather than interpolated shell commands.
+- Extension metadata never stores API keys, tokens, or MCP credentials. CCG continues to preserve user-managed `<project>/.pi/mcp.json` without reading its credential values in diagnostics.
+
+---
+
+## [1.0.1] - 2026-07-28
+
+> Historical Pi-only baseline release. The older `1.0.1` entry below belongs to the separate `ccg-workflow` package lineage.
+
+### Changed
+
+- Documented the active Pi-only runtime as six fixed role templates while Pi dynamically instantiates `N` frontend and `M` backend builder instances by component, `componentProfile`, and dependency wave.
+- Clarified that `ccg-miniprogram-builder` is retired; mini-program and WeChat work are frontend component profiles handled by generic `ccg-frontend-builder` instances.
+- Aligned workflow documentation around supervisor-mediated `START` approval, contract relay, ownership barriers, builder `FINISH` handoff, and at most two `componentId`-targeted repair rounds.
+- Corrected model routing documentation: `frontendModel` routes to generic frontend builder instances, `backendModel` to generic backend builder instances, and `reviewModel` to reviewer plus test-runner.
+- Corrected integration and memory documentation: Pi CLI is the host runtime, `pi-subagents` is the only required external Pi package/extension and supplies both subagent orchestration and per-agent persistent `memory` frontmatter, while Nocturne-compatible memory remains optional via user-managed MCP.
+- Recorded `1.0.1` as the historical Pi-only baseline and synchronized its tracked Pi template asset count after the retired miniprogram template deletion.
+
+### Fixed
+
+- Made update migration tolerate partial legacy metadata and preserve a custom Pi home through the public `ccg update --install-dir` path when invoking `pi-ccg@latest`.
+- Added required `pi-subagents` detection to init, doctor, and status, including exact canonical package matching and the install command when missing.
+- Made Pi `settings.json`, `models.json`, subagent config, and CCG metadata writes atomic, and reconciled retired model overrides from the interactive menu.
+- Made doctor asset checks respect user-only versus user-project installation scope.
+
+---
+
 ## [3.2.4] - 2026-07-27
 
 ### Added

@@ -11,12 +11,12 @@ import {
 
 const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
 const PI_TEMPLATES = join(PACKAGE_ROOT, 'templates', 'pi')
+const RETIRED_MINIPROGRAM_AGENT = 'ccg-miniprogram-builder'
 const CCG_AGENTS = [
   'ccg-project-scout',
   'ccg-planner',
   'ccg-backend-builder',
   'ccg-frontend-builder',
-  'ccg-miniprogram-builder',
   'ccg-test-runner',
   'ccg-reviewer',
 ]
@@ -54,10 +54,12 @@ describe('Pi installer release contract', () => {
     expect(result.success).toBe(true)
     expect(result.errors).toEqual([])
     expect(result.installedPiAgents?.sort()).toEqual([...CCG_AGENTS].sort())
+    expect(result.installedPiAgents).not.toContain(RETIRED_MINIPROGRAM_AGENT)
 
     for (const agent of CCG_AGENTS) {
       expect(await fs.pathExists(join(piHome, 'agents', `${agent}.md`))).toBe(true)
     }
+    expect(await fs.pathExists(join(piHome, 'agents', `${RETIRED_MINIPROGRAM_AGENT}.md`))).toBe(false)
 
     expect(await fs.pathExists(join(projectDir, '.pi', 'chains', 'ccg-plan.chain.md'))).toBe(true)
     expect(await fs.pathExists(join(projectDir, '.pi', 'prompts', 'ccg-go.md'))).toBe(true)
@@ -91,6 +93,49 @@ describe('Pi installer release contract', () => {
     expect(await fs.readFile(existingAgent, 'utf-8')).toBe('user-owned content\n')
     expect(result.installedPiAgents).not.toContain('ccg-backend-builder')
     expect(result.installedPiAgents).toContain('ccg-project-scout')
+    expect(result.installedPiAgents).not.toContain(RETIRED_MINIPROGRAM_AGENT)
+  })
+
+  it('deletes retired miniprogram agent on upgrade only when metadata confirms CCG created it', async () => {
+    const managed = await sandbox('managed-retired')
+    const managedRetiredPath = join(managed.piHome, 'agents', `${RETIRED_MINIPROGRAM_AGENT}.md`)
+    await fs.ensureDir(dirname(managedRetiredPath))
+    await fs.writeFile(managedRetiredPath, 'old CCG template\n', 'utf-8')
+    await fs.writeJson(join(managed.piHome, 'ccg-workflow.json'), {
+      managedFiles: [{ path: managedRetiredPath, kind: 'created' }],
+    })
+
+    const managedResult = await installPiWorkflow({
+      piHome: managed.piHome,
+      projectDir: managed.projectDir,
+      templateDir: PI_TEMPLATES,
+      installProjectAssets: false,
+      force: true,
+    })
+
+    expect(managedResult.success).toBe(true)
+    expect(await fs.pathExists(managedRetiredPath)).toBe(false)
+    expect(await fs.pathExists(join(managed.piHome, 'agents', 'ccg-frontend-builder.md'))).toBe(true)
+
+    const unknown = await sandbox('unknown-retired')
+    const unknownRetiredPath = join(unknown.piHome, 'agents', `${RETIRED_MINIPROGRAM_AGENT}.md`)
+    await fs.ensureDir(dirname(unknownRetiredPath))
+    await fs.writeFile(unknownRetiredPath, 'user-owned stale content\n', 'utf-8')
+    await fs.writeJson(join(unknown.piHome, 'ccg-workflow.json'), {
+      managedFiles: [],
+    })
+
+    const unknownResult = await installPiWorkflow({
+      piHome: unknown.piHome,
+      projectDir: unknown.projectDir,
+      templateDir: PI_TEMPLATES,
+      installProjectAssets: false,
+      force: true,
+    })
+
+    expect(unknownResult.success).toBe(true)
+    expect(await fs.readFile(unknownRetiredPath, 'utf-8')).toBe('user-owned stale content\n')
+    expect(unknownResult.installedPiAgents).not.toContain(RETIRED_MINIPROGRAM_AGENT)
   })
 
   it('maps role-specific models and bounded fanout settings to Pi configuration', async () => {
@@ -115,13 +160,13 @@ describe('Pi installer release contract', () => {
 
     expect(result.success).toBe(true)
     const settings = await fs.readJson(join(piHome, 'settings.json'))
-    expect(settings.subagents.agentOverrides).toMatchObject({
+    expect(settings.subagents.agentOverrides).toEqual({
       'ccg-backend-builder': { model: 'provider/backend' },
       'ccg-frontend-builder': { model: 'provider/frontend' },
-      'ccg-miniprogram-builder': { model: 'provider/frontend' },
       'ccg-reviewer': { model: 'provider/review' },
       'ccg-test-runner': { model: 'provider/review' },
     })
+    expect(settings.subagents.agentOverrides[RETIRED_MINIPROGRAM_AGENT]).toBeUndefined()
 
     const caps = await fs.readJson(join(piHome, 'extensions', 'subagent', 'config.json'))
     expect(caps).toMatchObject({

@@ -49,6 +49,34 @@ export interface ManagedFileEntry {
   backupPath?: string
 }
 
+// Pi 扩展目录与安装状态
+export type PiExtensionTier = 'required' | 'recommended' | 'optional' | 'experimental'
+export type PiExtensionCategory = 'orchestration' | 'mcp' | 'context' | 'continuity' | 'review' | 'security'
+export type PiExtensionOwnership = 'ccg-installed' | 'adopted' | 'missing'
+
+export interface PiExtensionDefinition {
+  id: string
+  packageSpec: `npm:${string}`
+  label: string
+  category: PiExtensionCategory
+  tier: PiExtensionTier
+  description: string
+  defaultSelected: boolean
+  docsUrl: string
+  securityNotes: readonly string[]
+  conflicts?: readonly string[]
+}
+
+export interface PiExtensionMetadataEntry {
+  id: string
+  packageSpec: `npm:${string}`
+  selected: boolean
+  ownership: PiExtensionOwnership
+  installedVersion?: string
+  installedAt?: string
+  updatedAt: string
+}
+
 // Pi 化安装器元数据
 export interface CcgInstallerMetadata {
   version: string
@@ -63,6 +91,7 @@ export interface CcgInstallerMetadata {
     reviewModel?: string
     caps: PiCapsConfig
   }
+  extensions?: PiExtensionMetadataEntry[]
   managedFiles: ManagedFileEntry[]
 }
 
@@ -123,6 +152,10 @@ export interface InitOptions {
   backendModel?: string
   reviewModel?: string
   providerFile?: string
+  extensionIds?: string[]
+  noOptionalExtensions?: boolean
+  installRequiredPackage?: boolean
+  preserveExtensions?: boolean
   devAgentCap?: number
   globalConcurrencyLimit?: number
   maxSpawnsPerSession?: number

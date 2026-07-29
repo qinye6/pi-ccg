@@ -8,9 +8,10 @@ import type {
 } from '../types'
 import fs from 'fs-extra'
 import { homedir } from 'node:os'
-import { dirname, join } from 'pathe'
+import { join } from 'pathe'
 import { parse, stringify } from 'smol-toml'
 import { version as packageVersion } from '../../package.json'
+import { writeJsonAtomic } from './pi-config'
 import {
   DEFAULT_PI_CAPS,
   getCcgMetadataPath,
@@ -114,11 +115,10 @@ export function createDefaultRouting(): ModelRouting {
   }
 }
 
-export async function readCcgMetadata(): Promise<CcgInstallerMetadata | null> {
+export async function readCcgMetadata(path = getCcgMetadataPath()): Promise<CcgInstallerMetadata | null> {
   try {
-    const metadataPath = getCcgMetadataPath()
-    if (await fs.pathExists(metadataPath)) {
-      return await fs.readJson(metadataPath) as CcgInstallerMetadata
+    if (await fs.pathExists(path)) {
+      return await fs.readJson(path) as CcgInstallerMetadata
     }
   }
   catch {
@@ -127,10 +127,11 @@ export async function readCcgMetadata(): Promise<CcgInstallerMetadata | null> {
   return null
 }
 
-export async function writeCcgMetadata(meta: CcgInstallerMetadata): Promise<void> {
-  const metadataPath = getCcgMetadataPath()
-  await fs.ensureDir(dirname(metadataPath))
-  await fs.writeJson(metadataPath, meta, { spaces: 2 })
+export async function writeCcgMetadata(
+  meta: CcgInstallerMetadata,
+  path = getCcgMetadataPath(),
+): Promise<void> {
+  await writeJsonAtomic(path, meta)
 }
 
 export function createDefaultMetadata(options: {
@@ -157,14 +158,16 @@ export function createDefaultMetadata(options: {
       ...lastChoices,
       caps,
     },
+    extensions: [],
     managedFiles: [],
   }
 }
 
 export async function updateCcgMetadata(
   patch: Partial<CcgInstallerMetadata>,
+  path = getCcgMetadataPath(),
 ): Promise<CcgInstallerMetadata> {
-  const current = await readCcgMetadata() ?? createDefaultMetadata({ language: 'zh-CN' })
+  const current = await readCcgMetadata(path) ?? createDefaultMetadata({ language: 'zh-CN' })
   const patchLastChoices = patch.lastChoices as Partial<CcgInstallerMetadata['lastChoices']> | undefined
   const lastChoices = patchLastChoices
     ? {
@@ -185,6 +188,6 @@ export async function updateCcgMetadata(
     updatedAt: new Date().toISOString(),
   }
 
-  await writeCcgMetadata(next)
+  await writeCcgMetadata(next, path)
   return next
 }

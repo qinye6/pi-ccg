@@ -4,6 +4,7 @@ import ansis from 'ansis'
 import fs from 'fs-extra'
 import { version } from '../package.json'
 import { doctor, status } from './commands/doctor'
+import { extensions } from './commands/extensions'
 import { init } from './commands/init'
 import { showMainMenu } from './commands/menu'
 import { update } from './commands/update'
@@ -20,6 +21,9 @@ function customizeHelp(sections: any[]): any[] {
       `  ${ansis.green('--backend-model')} <provider/model>`,
       `  ${ansis.green('--review-model')} <provider/model>`,
       `  ${ansis.green('--provider-file')} <path>`,
+      `  ${ansis.green('--extensions')} <id,id>`,
+      `  ${ansis.green('--no-optional-extensions')}`,
+      `  ${ansis.green('--install-required-package')}`,
       `  ${ansis.green('--dev-agent-cap')} <number>`,
       `  ${ansis.green('--global-concurrency-limit')} <number>`,
       `  ${ansis.green('--max-spawns-per-session')} <number>`,
@@ -66,10 +70,14 @@ export async function setupCommands(cli: CAC): Promise<void> {
     .option('--lang, -l <lang>', 'Display language (zh-CN, en)')
     .option('--force, -f', 'Overwrite CCG-managed Pi templates')
     .option('--skip-prompt, -s', 'Run non-interactively')
-    .option('--frontend-model <model>', 'Frontend and mini-program builder model')
+    .option('--frontend-model <model>', 'Model for all dynamic frontend builder instances')
     .option('--backend-model <model>', 'Backend builder model')
     .option('--review-model <model>', 'Reviewer and test-runner model')
     .option('--provider-file <path>', 'JSON provider definitions to append without exposing credentials')
+    .option('--extensions <id,id>', 'Explicit optional Pi extension IDs for non-interactive installs')
+    .option('--no-optional-extensions', 'Do not install optional Pi extensions')
+    .option('--install-required-package', 'Install missing required pi-subagents package')
+    .option('--preserve-extensions', 'Preserve extension metadata without package operations (used by update)')
     .option('--dev-agent-cap <number>', 'Maximum development builders')
     .option('--global-concurrency-limit <number>', 'Global Pi subagent concurrency limit')
     .option('--max-spawns-per-session <number>', 'Maximum subagent spawns per session')
@@ -86,6 +94,8 @@ export async function setupCommands(cli: CAC): Promise<void> {
         frontendModel: options.frontendModel ?? options.frontend,
         backendModel: options.backendModel ?? options.backend,
         installProjectAssets: options.projectAssets,
+        extensionIds: options.extensions?.split(',').map(id => id.trim()).filter(Boolean),
+        noOptionalExtensions: options.optionalExtensions === false,
         devAgentCap: positiveNumber(options.devAgentCap),
         globalConcurrencyLimit: positiveNumber(options.globalConcurrencyLimit),
         maxSpawnsPerSession: positiveNumber(options.maxSpawnsPerSession),
@@ -93,9 +103,32 @@ export async function setupCommands(cli: CAC): Promise<void> {
       })
     })
 
-  cli.command('update', 'Safely update managed Pi assets').action(async () => { await update() })
-  cli.command('doctor', 'Check CCG Pi installation health').action(async () => { await doctor() })
-  cli.command('status', 'Show CCG Pi installation status').action(async () => { await status() })
+  cli
+    .command('update', 'Safely update managed Pi assets')
+    .option('--install-dir, -d <path>', 'Pi agent home used by the existing installation')
+    .action(async (options: { installDir?: string }) => {
+      await update({ installDir: options.installDir })
+    })
+  cli
+    .command('extensions', 'View and manage optional Pi extensions')
+    .option('--install-dir, -d <path>', 'Pi agent home (default ~/.pi/agent)')
+    .action(async (options: { installDir?: string }) => {
+      await extensions({ installDir: options.installDir })
+    })
+  cli
+    .command('doctor', 'Check CCG Pi installation health')
+    .option('--install-dir, -d <path>', 'Pi agent home (default ~/.pi/agent)')
+    .option('--project-dir <path>', 'Project containing CCG managed Pi assets')
+    .action(async (options: { installDir?: string, projectDir?: string }) => {
+      await doctor(options)
+    })
+  cli
+    .command('status', 'Show CCG Pi installation status')
+    .option('--install-dir, -d <path>', 'Pi agent home (default ~/.pi/agent)')
+    .option('--project-dir <path>', 'Project containing CCG managed Pi assets')
+    .action(async (options: { installDir?: string, projectDir?: string }) => {
+      await status(options)
+    })
 
   cli
     .command('uninstall', 'Remove only CCG-managed Pi assets')

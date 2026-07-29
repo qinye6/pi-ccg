@@ -2,7 +2,7 @@
 
 > [根目录](../CLAUDE.md) > **src**
 
-**Last Updated**: 2026-07-27 (v3.2.4)
+**Last Updated**: 2026-07-28 (v3.2.5)
 
 ## 模块职责
 
@@ -19,20 +19,21 @@ npx pi-ccg → bin/ccg.mjs → dist/cli.mjs → src/cli.ts → setupCommands()
 | 命令 | 实现 | 作用 |
 |---|---|---|
 | `ccg` | `commands/menu.ts` | Pi workflow 交互菜单 |
-| `ccg init` / `ccg i` | `commands/init.ts` | 十步 Pi 安装/配置向导 |
-| `ccg update` | `commands/update.ts` | 从 metadata 恢复选择并安全重装 |
-| `ccg doctor` | `commands/doctor.ts` | 检查 Pi CLI、agents、caps、models、memory |
-| `ccg status` | `commands/doctor.ts` | 显示安装概况 |
-| `ccg uninstall` | `uninstallPiWorkflow()` | 只移除 CCG managed assets |
+| `ccg init` / `ccg i` | `commands/init.ts` | 十一阶段 Pi 安装/配置与扩展选择向导 |
+| `ccg update [--install-dir <path>]` | `commands/update.ts` | 从 metadata 恢复选择并安全重装；不执行 package 操作 |
+| `ccg extensions [--install-dir <path>]` | `commands/extensions.ts` | 管理扩展 catalog、选择与 package lifecycle |
+| `ccg doctor [--install-dir <path>] [--project-dir <path>]` | `commands/doctor.ts` | 检查 Pi CLI、必需 runtime、agents、caps、models、extensions、MCP 配置存在性 |
+| `ccg status [--install-dir <path>] [--project-dir <path>]` | `commands/doctor.ts` | 显示安装与 extension ownership 概况 |
+| `ccg uninstall` | `uninstallPiWorkflow()` | 移除 CCG assets 与 CCG-owned packages，保留 adopted packages |
 
-`init` 十步状态机：
+`init` 十一阶段状态机：
 
 ```text
-language → environment → scope → provider → frontend model
+language → environment → extensions → scope → provider → frontend model
 → backend model → review model → limits → entry → summary
 ```
 
-主要 options：`--frontend-model`、`--backend-model`、`--review-model`、`--provider-file`、四个 cap 参数、`--project-assets/--no-project-assets`、`--install-dir`、`--skip-prompt`、`--force`。
+主要 options：`--extensions`、`--no-optional-extensions`、`--install-required-package`、`--frontend-model`、`--backend-model`、`--review-model`、`--provider-file`、四个 cap 参数、`--project-assets/--no-project-assets`、`--install-dir`、`--skip-prompt`、`--force`。`--preserve-extensions` 仅供 update 保留 metadata 且禁止 package reconciliation。
 
 ## Pi 安装器
 
@@ -80,19 +81,21 @@ installPiProviders
 - 项目已有 `.pi/settings.json` 永不覆盖。
 - 用户 `.pi/mcp.json` 永不覆盖、永不删除。
 - `models.json` 同名 provider 默认跳过；仅显式 `force` 覆盖，并先创建 `.ccg-bak`。
-- `settings.json` 与 subagent config 深度合并，保留非 CCG 字段。
+- `settings.json`、`models.json`、subagent config 与 `ccg-workflow.json` metadata 使用同目录临时文件、`fsync` 和 atomic rename 写入；逻辑合并保留非 CCG 字段。
 - 模板写入结果区分 `written`、`skipped`、`failed`。
 - 模板写入前拒绝 `.claude`、`codeagent-wrapper` 和旧模型 placeholder 残留。
 
-## 模型与并发映射
+## 模型、并发与动态 builder 映射
 
 ```text
-frontendModel → ccg-frontend-builder, ccg-miniprogram-builder
-backendModel  → ccg-backend-builder
+frontendModel → generic ccg-frontend-builder instances
+backendModel  → generic ccg-backend-builder instances
 reviewModel   → ccg-reviewer, ccg-test-runner
 ```
 
-scout/planner 继承 `subagents.defaultModel`。
+scout/planner 继承 Pi `subagents.defaultModel`。
+
+Pi 根据 planner contract 动态派生 `N` 个 frontend builder 实例和 `M` 个 backend builder 实例。实例按 component/profile/wave 执行；`ccg-miniprogram-builder` 已退休，小程序/微信是 frontend `componentProfile`。
 
 ```text
 effectiveDevParallelism = min(
@@ -102,25 +105,47 @@ effectiveDevParallelism = min(
   parallel.maxTasks
 )
 
-requiredSpawns = 2 + N + 1 + 1
+requiredSpawns = 2 + (N_frontend + M_backend) + 1 + 1
 ```
 
 默认 caps：`4 / 4 / 24 / 1`。
+
+## Runtime coordination contract
+
+- planner 产出 `componentId`、ownership、依赖 waves、component profile 和测试计划。
+- supervisor relay contract 后必须等待 supervisor `START` approval，才能启动可写 builder。
+- builder task string 必须内联相关 plan slice、前序 wave handoff 和边界约束。
+- builder 只能改 ownership 范围内的文件，跨组件变更交由 supervisor 协调。
+- builder 完成时输出 `FINISH` handoff。
+- test/review failure 必须携带 `componentId`，定向修复最多两轮。
 
 ## 关键模块
 
 | 文件 | 作用 |
 |---|---|
-| `commands/init.ts` | 十步向导、metadata 写入 |
-| `commands/update.ts` | metadata 驱动更新 |
-| `commands/doctor.ts` | required/optional 健康检查 |
+| `commands/init.ts` | 十一阶段向导、扩展选择、metadata 写入 |
+| `commands/extensions.ts` | catalog 状态、用户确认、安装/移除与 ownership |
+| `commands/update.ts` | metadata 驱动 assets 更新；不执行第三方 package 操作 |
+| `commands/doctor.ts` | required/selected/skipped 健康检查与脱敏状态 |
 | `commands/menu.ts` | Pi-only 菜单 |
-| `cli-setup.ts` | 六个 CLI command 注册 |
-| `utils/installer.ts` | Pi 安装/卸载；legacy 实现仅内部历史兼容 |
+| `cli-setup.ts` | 七个 CLI command 注册 |
+| `utils/installer.ts` | Pi assets 安装/卸载与 CCG-owned package 清理；legacy 实现仅内部历史兼容 |
+| `utils/pi-extensions.ts` | 扩展 catalog、selection reconciliation、ownership |
+| `utils/pi-runtime.ts` | Pi/package inventory 检测与安全参数数组 lifecycle 命令 |
 | `utils/pi-paths.ts` | Pi 路径、agent 名、默认 caps |
-| `utils/pi-config.ts` | settings/provider/cap 合并与公式 |
+| `utils/pi-config.ts` | settings/provider/cap 合并、atomic JSON 写入与公式 |
 | `utils/installer-template.ts` | Pi 模板注入、legacy residue 检测、managed block |
 | `types/index.ts` | Pi metadata、caps、result 类型及历史类型 |
+
+## 扩展与 package lifecycle 边界
+
+`pi-subagents` 是唯一 required package。精选 catalog 还包含推荐的 `pi-mcp-adapter`、`pi-memctx`、`pi-session-continuity`，可选的 `pi-pr-review`，以及默认不选的实验性 `@vigolium/piolium`。
+
+interactive init 可预选推荐项，但必须确认后才执行；non-interactive fresh install 只有显式 flags 才安装 optional packages。metadata ownership 为 `ccg-installed` / `adopted` / `missing`。update 只重装 assets 并保留 metadata；`ccg extensions` 独占 package lifecycle；uninstall 只删除 CCG-owned packages。命令使用受校验 package spec 和参数数组，不拼接 shell。
+
+`pi-subagents` 提供 orchestration 与 per-agent memory；`pi-memctx`、`pi-session-continuity`、`pi-mcp-adapter` 分别补充按需 context、durable handoff、lazy MCP proxy。稳定 prompt 前缀加 task 尾部 runtime context 只提升 cache friendliness，实际 cache hit 由 provider 决定。
+
+CCG 只写 `.pi/mcp.json.example`，不覆盖、删除或输出用户 `.pi/mcp.json` 的值。
 
 ## Legacy 边界
 
@@ -136,9 +161,11 @@ requiredSpawns = 2 + N + 1 + 1
 `src/utils/__tests__/` 的 Pi 主线覆盖：
 
 - CLI command/flag contract；
-- 十步 init 与 custom Pi home metadata；
-- update preservation；
-- 七个 agents 与项目资产安装；
+- 十一阶段 init、扩展选择与 custom Pi home metadata；
+- update 对 partial legacy metadata 的兼容、扩展选择保留、公开 `--install-dir` 与 atomic metadata/config 写入；
+- package inventory、catalog validation、安全 install/remove 参数、ownership 与失败重试；
+- doctor required/selected/skipped 分级、MCP 路径存在性与输出脱敏；
+- 六个 role templates、动态 builder 路由与项目资产安装；
 - provider/settings/cap merge；
 - AGENTS managed block；
 - uninstall preservation 与幂等；

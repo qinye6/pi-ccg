@@ -3,44 +3,70 @@ import { join } from 'pathe'
 
 // Pi 化改造：所有 Pi 目标路径与共享常量集中于此（plan step 2）
 
+/** 当前安装、验证和模型路由使用的六个通用角色模板。 */
+export const CCG_PI_ACTIVE_AGENT_NAMES = [
+  'ccg-project-scout',
+  'ccg-planner',
+  'ccg-backend-builder',
+  'ccg-frontend-builder',
+  'ccg-test-runner',
+  'ccg-reviewer',
+] as const
+
+/** 仅用于升级迁移和卸载清理，不再作为 active runtime 安装。 */
+export const CCG_PI_RETIRED_AGENT_NAMES = [
+  'ccg-miniprogram-builder',
+] as const
+
+export const CCG_PI_CLEANUP_AGENT_NAMES = [
+  ...CCG_PI_ACTIVE_AGENT_NAMES,
+  ...CCG_PI_RETIRED_AGENT_NAMES,
+] as const
+
+export const CCG_PI_MODEL_AGENTS = {
+  frontendModel: ['ccg-frontend-builder'],
+  backendModel: ['ccg-backend-builder'],
+  reviewModel: ['ccg-reviewer', 'ccg-test-runner'],
+} as const
+
 /** Pi 用户级根目录 ~/.pi/agent */
 export function getPiAgentHome(): string {
   return join(homedir(), '.pi', 'agent')
 }
 
-/** Pi 全局设置 ~/.pi/agent/settings.json（仅深合并 subagents 命名空间） */
-export function getPiSettingsPath(): string {
-  return join(getPiAgentHome(), 'settings.json')
+/** Pi 全局设置 <piHome>/settings.json（仅深合并 subagents 命名空间） */
+export function getPiSettingsPath(piHome = getPiAgentHome()): string {
+  return join(piHome, 'settings.json')
 }
 
-/** Pi provider 注册表 ~/.pi/agent/models.json（只追加，不覆盖同名 provider） */
-export function getPiModelsPath(): string {
-  return join(getPiAgentHome(), 'models.json')
+/** Pi provider 注册表 <piHome>/models.json（只追加，不覆盖同名 provider） */
+export function getPiModelsPath(piHome = getPiAgentHome()): string {
+  return join(piHome, 'models.json')
 }
 
-/** 用户级 agents 目录 ~/.pi/agent/agents */
-export function getPiAgentsDir(): string {
-  return join(getPiAgentHome(), 'agents')
+/** 用户级 agents 目录 <piHome>/agents */
+export function getPiAgentsDir(piHome = getPiAgentHome()): string {
+  return join(piHome, 'agents')
 }
 
-/** 用户级 chains 目录 ~/.pi/agent/chains */
-export function getPiChainsDir(): string {
-  return join(getPiAgentHome(), 'chains')
+/** 用户级 chains 目录 <piHome>/chains */
+export function getPiChainsDir(piHome = getPiAgentHome()): string {
+  return join(piHome, 'chains')
 }
 
-/** 用户级 prompts 目录 ~/.pi/agent/prompts */
-export function getPiPromptsDir(): string {
-  return join(getPiAgentHome(), 'prompts')
+/** 用户级 prompts 目录 <piHome>/prompts */
+export function getPiPromptsDir(piHome = getPiAgentHome()): string {
+  return join(piHome, 'prompts')
 }
 
-/** pi-subagents 扩展上限配置 ~/.pi/agent/extensions/subagent/config.json */
-export function getSubagentExtensionConfigPath(): string {
-  return join(getPiAgentHome(), 'extensions', 'subagent', 'config.json')
+/** pi-subagents 扩展上限配置 <piHome>/extensions/subagent/config.json */
+export function getSubagentExtensionConfigPath(piHome = getPiAgentHome()): string {
+  return join(piHome, 'extensions', 'subagent', 'config.json')
 }
 
-/** CCG 安装器元数据落点 ~/.pi/agent/ccg-workflow.json（取代 ~/.claude/.ccg/config.toml） */
-export function getCcgMetadataPath(): string {
-  return join(getPiAgentHome(), 'ccg-workflow.json')
+/** CCG 安装器元数据落点 <piHome>/ccg-workflow.json（取代 ~/.claude/.ccg/config.toml） */
+export function getCcgMetadataPath(piHome = getPiAgentHome()): string {
+  return join(piHome, 'ccg-workflow.json')
 }
 
 /** 项目级 Pi 目录 <cwd>/.pi */
@@ -84,7 +110,7 @@ export function getLegacyClaudeConfigPath(): string {
   return join(getLegacyClaudeCcgDir(), 'config.toml')
 }
 
-/** 默认代理上限（plan §5 公式输入：dev=4 时 requiredSpawns=8 ≤ 24） */
+/** 默认代理上限（并发 builder 上限为 4；实际总数由 supervisor 按 waves 与 spawn budget 决定） */
 export const DEFAULT_PI_CAPS = {
   devAgentCap: 4,
   globalConcurrencyLimit: 4,

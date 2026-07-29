@@ -182,17 +182,16 @@ describe('assertNoLegacyResidue', () => {
 })
 
 // ─────────────────────────────────────────────────────────────
-// F. Pi 原生 agent memory
+// F. pi-subagents per-agent persistent memory
 // ─────────────────────────────────────────────────────────────
-describe('Pi agent memory frontmatter', () => {
-  it('uses native project memory only where tool permissions make the scope safe', async () => {
+describe('pi-subagents memory frontmatter', () => {
+  it('enables project-scoped per-agent memory only where tool permissions make the scope safe', async () => {
     const agentDir = join(PACKAGE_ROOT, 'templates', 'pi', 'agents')
     const memoryAgents = [
       'ccg-project-scout',
       'ccg-planner',
       'ccg-backend-builder',
       'ccg-frontend-builder',
-      'ccg-miniprogram-builder',
     ]
 
     for (const agent of memoryAgents) {
@@ -205,5 +204,7 @@ describe('Pi agent memory frontmatter', () => {
       expect(content).not.toContain('memory:')
       expect(content).toContain('completionGuard: false')
     }
+
+    expect(await fs.pathExists(join(agentDir, 'ccg-miniprogram-builder.md'))).toBe(false)
   })
 })

@@ -1,13 +1,16 @@
 # CCG Pi 受管策略
 
-本项目启用 CCG Pi workflow。Pi supervisor 应优先通过 `/prompt-workflow ccg-go` 执行复杂开发任务，并只使用本项目或用户级安装的 `ccg-*` agents、`ccg-plan` chain 与 `ccg-go` prompt workflow。不要混用未受管的同名实验资产。
+本项目启用 CCG Pi workflow。Pi 是唯一 supervisor；固定模板为 scout、planner、通用 frontend/backend builder、test-runner、reviewer。Pi 根据实际组件动态实例化 `N` 个 frontend builder 与 `M` 个 backend builder，Web、管理后台、小程序、mobile 等只是 `componentProfile`，不是固定 agent。
 
 ## 执行顺序
 
-1. 先运行只读 `ccg-plan` chain，获得组件清单与 fanout plan。
-2. supervisor 根据 plan 自行构造 `subagent({ tasks: [...] })`；不要让 builder 规划或派生下级代理。
-3. 开发完成后自动运行 `ccg-test-runner`，再自动运行 `ccg-reviewer`。
-4. 若测试失败或出现 `Critical` finding，最多 2 轮回派 owning builder 做窄范围修复。
+1. 运行只读 `ccg-plan`，获得 `ccg.fanoutPlan.v2`。
+2. supervisor 建立 coordination roster，检查重复职责、scope/file、shared owner 与 contract 冲突。
+3. 按依赖和上限启动 async waves；同一通用 builder 模板可出现多次。
+4. 每个 builder 在写代码前必须通过 `ccg.builderStart.v2` 请求批准；未批准不得 edit/write。
+5. scope/shared file/contract 变化必须阻塞式联系 supervisor；supervisor 向受影响的运行中 builder 定向 relay。
+6. builder 返回前发送 `ccg.builderFinish.v2`，并输出 `ccg.builderResult.v2`。
+7. 所有开发 waves 完成后自动运行 test-runner 与 reviewer；失败或 Critical 最多 2 轮按 componentId 定向修复。
 
 ## 上限
 
@@ -16,20 +19,20 @@
 - 单会话 spawn 预算：`{{MAX_SPAWNS_PER_SESSION}}`
 - 子代理嵌套深度：`{{MAX_SUBAGENT_DEPTH}}`
 
-若组件数量超过上限，必须拆为 sequential waves；不得超额并发。
+组件数量可大于单 wave 并发，但必须拆顺序 waves，并为 test/review/repair 保留 spawn 预算。
 
-## 文件所有权
+## Ownership 与通信
 
-每个 builder task 必须声明互斥 `scope` 与 `forbiddenScopes`。两个 builder 不得写同一文件。共享文件必须由 supervisor 指定唯一 owner，或拆到单独 wave。
+- 两个 builder 不得写同一文件或重复实现同一职责。
+- shared scope 必须有唯一 owner，或放入独立 wave。
+- builder 不直接猜测 sibling intercom target；由 supervisor 持有 roster/ledger，通过 `subagent_supervisor` 审批 START，通过 `subagent(... action: "steer")` relay 相关进度、contract 与 FINISH 状态。
+- `ccg-backend-builder` 和 `ccg-frontend-builder` 没有 `subagent` 工具，不得派生下级代理。
 
-## Builder 规则
+## 上下文、扩展与凭据
 
-`ccg-backend-builder`、`ccg-frontend-builder`、`ccg-miniprogram-builder` 是写代码代理，但没有 `subagent` 工具；它们不得派生子代理。遇到产品决策、scope 冲突或共享文件写入，必须 `contact_supervisor`。
-
-## 记忆
-
-如果可用 memory tool，开始前检索相关项目记忆，结束后持久化非敏感结论；不可用时静默跳过。
-
-## 凭据
-
-不得把 API Key / token 或任何真实凭据写入 agent prompt、AGENTS.md、chain、任务描述、日志或总结。真实凭据只允许存在于用户自管且不覆盖的 `mcp.json`。
+- `memory`/`pi-memctx` 可用时只检索和持久化非敏感项目边界、决策与验证命令；不可用时静默降级到 task-string context，且文件事实优先。
+- `pi-session-continuity` 可用时用于 durable checkpoint/handoff；不可用时由 supervisor 把完整 handoff 内联给后续 run。
+- `pi-mcp-adapter` 可用时先发现再按需调用 lazy MCP server，不得假定某个 MCP server 已配置；不可用时继续核心 plan/build/test/review 流程。
+- `pi-pr-review` 与实验性 security audit 只能补充审查，不能替代内建 test-runner/reviewer gate。
+- 静态规则保持在 task 前缀，运行期 plan/component/handoff 放在后部以减少上下文抖动；实际 provider cache hit 不保证。
+- 不得把真实 API Key/token 写入 agent、prompt、AGENTS.md、chain、task、消息、日志或总结；真实 MCP 凭据只允许存在于用户自管且不覆盖的 `<project>/.pi/mcp.json`。

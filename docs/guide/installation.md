@@ -6,15 +6,21 @@
 - npm/npx
 - Pi CLI
 
-## Interactive installation
+The active workflow requires `npm:pi-subagents`. The interactive installer detects it with `pi list --no-approve` and asks before installing it when missing. You may also install it directly:
 
-Run the latest public package without installing it globally:
+```bash
+pi install npm:pi-subagents
+```
+
+## Interactive installation
 
 ```bash
 npx pi-ccg init
 ```
 
-The installer configures Pi agents, chains, prompts, model routing, concurrency limits, and optional project assets. After installation, open the workflow menu with:
+The eleven-stage installer configures language, environment, extensions, scope, providers, model routing, concurrency limits, entry mode, and the final summary. The extension stage displays every third-party package, tier, purpose, and execution warning. Recommended packages may be checked by default, but nothing is installed until the user confirms the summary.
+
+After installation:
 
 ```bash
 ccg
@@ -22,12 +28,29 @@ ccg
 
 The npm package also exposes `pi-ccg` as an executable alias.
 
+## Curated extension profile
+
+| Tier | Package | Purpose | Interactive default |
+|---|---|---|---|
+| Required | `npm:pi-subagents` | Dynamic subagents, supervisor coordination, per-agent memory | Required |
+| Recommended | `npm:pi-mcp-adapter` | Lazy MCP servers, compact proxy tool, metadata caching, output guards | Selected |
+| Recommended | `npm:pi-memctx` | Local knowledge packs, search, persistence, on-demand context injection | Selected |
+| Recommended | `npm:pi-session-continuity` | Durable checkpoints, handoffs, session recovery | Selected |
+| Optional | `npm:pi-pr-review` | Parallel GitHub PR review with structured findings | Not selected |
+| Experimental | `npm:@vigolium/piolium` | Multi-phase security audit with resumable state | Not selected |
+
+All packages execute with the current user's permissions. Review upstream documentation before installation, especially for experimental packages.
+
 ## Non-interactive installation
+
+Fresh non-interactive installs do not install optional packages unless explicitly listed:
 
 ```bash
 npx pi-ccg init \
   --skip-prompt \
   --project-assets \
+  --install-required-package \
+  --extensions mcp-adapter,memory-context,session-continuity \
   --frontend-model provider/frontend-model \
   --backend-model provider/backend-model \
   --review-model provider/review-model \
@@ -37,15 +60,33 @@ npx pi-ccg init \
   --max-subagent-depth 1
 ```
 
-Use model identifiers configured in the user's Pi environment. Do not put API keys in command arguments or CCG templates.
+Use `--no-optional-extensions` for an explicit core-only installation. Package identifiers come from the validated CCG catalog, not arbitrary shell input. Never put API keys in command arguments, provider files, templates, or metadata.
+
+## Extension management
+
+```bash
+ccg extensions
+```
+
+The manager restores previous selections, shows installed state, previews every `pi install`/`pi remove`, and asks for confirmation. Existing packages are marked `adopted` and are never removed by CCG. Packages installed by CCG are marked `ccg-installed` and may be removed when deselected or during uninstall.
 
 ## Update and removal
 
 ```bash
 ccg update
+ccg extensions
 ccg doctor
 ccg status
 ccg uninstall
 ```
 
-Update restores the choices saved in CCG metadata and resolves `pi-ccg@latest`. Uninstall removes only CCG-managed files and managed blocks.
+Update restores saved workflow and extension choices while reinstalling only CCG-managed assets. It does not run third-party package operations or automatically add newly recommended extensions. Use `ccg extensions` for package changes.
+
+For a custom Pi home:
+
+```bash
+ccg update --install-dir /path/to/custom/pi-home
+ccg extensions --install-dir /path/to/custom/pi-home
+```
+
+Uninstall removes managed files, blocks, and only packages recorded as `ccg-installed`. Adopted packages, providers, unrelated settings, and user-managed MCP configuration are preserved. If package removal fails, ownership metadata remains so removal can be retried safely.

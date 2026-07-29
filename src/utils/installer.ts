@@ -16,8 +16,16 @@ import {
   upsertManagedBlock,
 } from './installer-template'
 import { readCcgConfig, readCcgMetadata, updateCcgMetadata } from './config'
-import { appendPiProviders, mergePiSettingsSubagents, mergeSubagentExtensionConfig } from './pi-config'
+import { removeCcgInstalledExtensions } from './pi-extensions'
 import {
+  appendPiProviders,
+  mergeSubagentExtensionConfig,
+  reconcilePiSettingsSubagents,
+} from './pi-config'
+import {
+  CCG_PI_ACTIVE_AGENT_NAMES,
+  CCG_PI_CLEANUP_AGENT_NAMES,
+  CCG_PI_RETIRED_AGENT_NAMES,
   DEFAULT_PI_CAPS,
   getPiAgentHome,
   getProjectAgentsMdPath,
@@ -1211,7 +1219,31 @@ async function writeRenderedPiTemplate(
   }
 }
 
-/** Copy templates/pi/agents/*.md → <piHome>/agents/. */
+async function retireManagedPiAgentFiles(ctx: PiInstallContext): Promise<void> {
+  const metadataPath = join(ctx.piHome, 'ccg-workflow.json')
+  if (!(await fs.pathExists(metadataPath))) return
+
+  try {
+    const metadata = await fs.readJson(metadataPath) as CcgInstallerMetadata
+    const managedCreated = new Set(
+      (metadata.managedFiles ?? [])
+        .filter(entry => entry.kind === 'created')
+        .map(entry => entry.path),
+    )
+
+    for (const agentName of CCG_PI_RETIRED_AGENT_NAMES) {
+      const retiredPath = join(piAgentsDir(ctx), `${agentName}.md`)
+      if (managedCreated.has(retiredPath) && await fs.pathExists(retiredPath)) {
+        await fs.remove(retiredPath)
+      }
+    }
+  }
+  catch (error) {
+    recordPiError(ctx, `Failed to retire legacy Pi agent assets: ${error}`)
+  }
+}
+
+/** Copy active templates/pi/agents/*.md → <piHome>/agents/. */
 export async function installPiAgents(ctx: PiInstallContext): Promise<void> {
   const agentsSrcDir = join(ctx.templateDir, 'agents')
   const agentsDestDir = piAgentsDir(ctx)
@@ -1223,15 +1255,14 @@ export async function installPiAgents(ctx: PiInstallContext): Promise<void> {
 
   try {
     await fs.ensureDir(agentsDestDir)
-    const files = await fs.readdir(agentsSrcDir)
-    for (const file of files) {
-      if (!file.endsWith('.md')) continue
+    for (const agentName of CCG_PI_ACTIVE_AGENT_NAMES) {
+      const file = `${agentName}.md`
       await writeRenderedPiTemplate(
         ctx,
         join(agentsSrcDir, file),
         join(agentsDestDir, file),
         {
-          installName: basename(file, '.md'),
+          installName: agentName,
           resultKey: 'installedPiAgents',
         },
       )
@@ -1368,11 +1399,8 @@ export async function installPiSettingsOverrides(
 
   addOverride('ccg-backend-builder', overrides.backendModel)
   addOverride('ccg-frontend-builder', overrides.frontendModel)
-  addOverride('ccg-miniprogram-builder', overrides.frontendModel)
   addOverride('ccg-reviewer', overrides.reviewModel)
   addOverride('ccg-test-runner', overrides.reviewModel)
-
-  if (Object.keys(agentOverrides).length === 0) return
 
   const settingsPath = piSettingsPath(ctx)
   const patch: PiSubagentsSettings = { agentOverrides }
@@ -1384,7 +1412,11 @@ export async function installPiSettingsOverrides(
   }
 
   try {
-    const mergeResult = await mergePiSettingsSubagents(patch, settingsPath)
+    const mergeResult = await reconcilePiSettingsSubagents(
+      patch,
+      CCG_PI_RETIRED_AGENT_NAMES,
+      settingsPath,
+    )
     if (mergeResult.changed) {
       pushManagedFile(ctx, {
         path: settingsPath,
@@ -1394,7 +1426,7 @@ export async function installPiSettingsOverrides(
     }
   }
   catch (error) {
-    recordPiError(ctx, `Failed to merge Pi settings overrides: ${error}`)
+    recordPiError(ctx, `Failed to reconcile Pi settings overrides: ${error}`)
   }
 }
 
@@ -1490,6 +1522,7 @@ export async function installPiWorkflow(options: PiInstallOptions = {}): Promise
     await fs.ensureDir(getProjectPiPromptsDir(ctx.projectDir))
   }
 
+  await retireManagedPiAgentFiles(ctx)
   await installPiAgents(ctx)
   await installPiChain(ctx)
   await installPiPromptWorkflow(ctx)
@@ -1614,16 +1647,6 @@ export async function installWorkflows(
 // Pi managed uninstall
 // ═══════════════════════════════════════════════════════
 
-const CCG_PI_AGENT_NAMES = [
-  'ccg-project-scout',
-  'ccg-planner',
-  'ccg-backend-builder',
-  'ccg-frontend-builder',
-  'ccg-miniprogram-builder',
-  'ccg-test-runner',
-  'ccg-reviewer',
-] as const
-
 export interface PiUninstallOptions {
   piHome?: string
   projectDir?: string
@@ -1672,7 +1695,7 @@ async function removeCcgPiOverrides(settingsPath: string, result: PiUninstallRes
     }
 
     let changed = false
-    for (const agent of CCG_PI_AGENT_NAMES) {
+    for (const agent of CCG_PI_CLEANUP_AGENT_NAMES) {
       if (Object.prototype.hasOwnProperty.call(overrides, agent)) {
         delete overrides[agent]
         changed = true
@@ -1771,7 +1794,7 @@ export async function uninstallPiWorkflow(options: PiUninstallOptions = {}): Pro
     }
   }
 
-  for (const agent of CCG_PI_AGENT_NAMES) {
+  for (const agent of CCG_PI_CLEANUP_AGENT_NAMES) {
     await removeFileIfPresent(join(piHome, 'agents', `${agent}.md`), result)
   }
   await removeFileIfPresent(join(piHome, 'chains', 'ccg-plan.chain.md'), result)
@@ -1798,7 +1821,18 @@ export async function uninstallPiWorkflow(options: PiUninstallOptions = {}): Pro
   }
   const userMcpPath = join(projectDir, '.pi', 'mcp.json')
   if (await fs.pathExists(userMcpPath)) result.preserved.push(userMcpPath)
-  await removeFileIfPresent(metadataPath, result)
+
+  const extensionRemoval = await removeCcgInstalledExtensions(metadata?.extensions, piHome)
+  result.removed.push(...extensionRemoval.removed.map(packageSpec => `${packageSpec}#pi-package`))
+  result.preserved.push(...extensionRemoval.preserved.map(packageSpec => `${packageSpec}#user-owned-package`))
+  if (extensionRemoval.errors.length > 0) {
+    result.errors.push(...extensionRemoval.errors)
+    result.success = false
+    if (await fs.pathExists(metadataPath)) result.preserved.push(`${metadataPath}#extension-removal-retry`)
+  }
+  else {
+    await removeFileIfPresent(metadataPath, result)
+  }
 
   result.removed = [...new Set(result.removed)]
   result.preserved = [...new Set(result.preserved)]

@@ -1,3 +1,4 @@
+import { open } from 'node:fs/promises'
 import fs from 'fs-extra'
 import { dirname } from 'pathe'
 import {
@@ -117,9 +118,49 @@ async function readJsonOrEmpty<T extends JsonRecord>(filePath: string): Promise<
   }
 }
 
-async function writeJson(filePath: string, data: unknown): Promise<void> {
-  await fs.ensureDir(dirname(filePath))
-  await fs.writeFile(filePath, `${JSON.stringify(data, null, 2)}\n`, 'utf-8')
+let atomicWriteCounter = 0
+
+async function syncDirectory(dirPath: string): Promise<void> {
+  try {
+    const directory = await open(dirPath, 'r')
+    try {
+      await directory.sync()
+    }
+    finally {
+      await directory.close()
+    }
+  }
+  catch {
+    // Directory fsync is not supported on every platform.
+  }
+}
+
+export async function writeJsonAtomic(filePath: string, data: unknown): Promise<void> {
+  const dirPath = dirname(filePath)
+  await fs.ensureDir(dirPath)
+
+  let mode = 0o600
+  if (await fs.pathExists(filePath)) {
+    mode = (await fs.stat(filePath)).mode & 0o777
+  }
+
+  const tempPath = `${filePath}.${process.pid}.${Date.now()}.${atomicWriteCounter++}.ccg-tmp`
+  const handle = await open(tempPath, 'wx', mode)
+  let handleOpen = true
+
+  try {
+    await handle.writeFile(`${JSON.stringify(data, null, 2)}\n`, 'utf-8')
+    await handle.sync()
+    await handle.close()
+    handleOpen = false
+    await fs.rename(tempPath, filePath)
+    await syncDirectory(dirPath)
+  }
+  catch (error) {
+    if (handleOpen) await handle.close().catch(() => {})
+    await fs.remove(tempPath).catch(() => {})
+    throw error
+  }
 }
 
 function mergeSubagents(current: unknown, patch: PiSubagentsSettings): PiSubagentsSettings {
@@ -171,7 +212,37 @@ export async function mergePiSettingsSubagents(
     await fs.copy(settingsPath, backupPath)
   }
 
-  await writeJson(settingsPath, nextSettings)
+  await writeJsonAtomic(settingsPath, nextSettings)
+  return { changed: true, backupPath }
+}
+
+export async function reconcilePiSettingsSubagents(
+  patch: PiSubagentsSettings,
+  removeAgentNames: readonly string[],
+  settingsPath: string = getPiSettingsPath(),
+): Promise<{ changed: boolean, backupPath: string | null }> {
+  const { existed, data } = await readJsonOrEmpty<PiSettingsFile>(settingsPath)
+  const nextSettings: PiSettingsFile = { ...data }
+  const nextSubagents = mergeSubagents(data.subagents, patch)
+  const nextOverrides = { ...asAgentOverrides(nextSubagents.agentOverrides) }
+
+  for (const agentName of removeAgentNames) {
+    delete nextOverrides[agentName]
+  }
+
+  if (Object.keys(nextOverrides).length === 0) delete nextSubagents.agentOverrides
+  else nextSubagents.agentOverrides = nextOverrides
+
+  if (Object.keys(nextSubagents).length === 0) delete nextSettings.subagents
+  else nextSettings.subagents = nextSubagents
+
+  if (stableJson(data) === stableJson(nextSettings)) {
+    return { changed: false, backupPath: null }
+  }
+
+  const backupPath = existed ? `${settingsPath}.ccg-bak` : null
+  if (backupPath !== null) await fs.copy(settingsPath, backupPath)
+  await writeJsonAtomic(settingsPath, nextSettings)
   return { changed: true, backupPath }
 }
 
@@ -210,7 +281,7 @@ export async function appendPiProviders(
     if (existed && opts.force && overwroteExistingProvider) {
       await fs.copy(modelsPath, `${modelsPath}.ccg-bak`)
     }
-    await writeJson(modelsPath, nextData)
+    await writeJsonAtomic(modelsPath, nextData)
   }
 
   return { added, skipped }
@@ -244,7 +315,7 @@ export async function mergeSubagentExtensionConfig(
     },
   }
 
-  await writeJson(configPath, nextConfig)
+  await writeJsonAtomic(configPath, nextConfig)
   return nextConfig
 }
 
@@ -262,6 +333,6 @@ export function computeEffectiveDevParallelism(cfg: {
   )
 }
 
-export function computeRequiredSpawns(effectiveDevParallelism: number): number {
-  return 2 + effectiveDevParallelism + 1 + 1
+export function computeRequiredSpawns(builderCount: number): number {
+  return 2 + builderCount + 1 + 1
 }
