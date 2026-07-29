@@ -80,7 +80,10 @@ installPiProviders
 - `AGENTS.md` 只更新 `<!-- CCG:PI-START -->` 到 `<!-- CCG:PI-END -->` 之间的块。
 - 项目已有 `.pi/settings.json` 永不覆盖。
 - 用户 `.pi/mcp.json` 永不覆盖、永不删除。
-- `models.json` 同名 provider 默认跳过；仅显式 `force` 覆盖，并先创建 `.ccg-bak`。
+- `models.json` 使用 missing/valid/invalid 三态检查；invalid JSON 拒绝覆盖。
+- provider/model 按 exact ID merge；`modelOverrides` 递归深合并并保留 pricing、nested compat、headers、siblings 与未知字段。
+- 只有 exact verified model preset 才自动补全 `contextWindow` / `maxTokens`；unknown model 不猜测。
+- custom provider onboarding 只接受 API key 环境变量引用，不要求、不读取、不存储真实 key。
 - `settings.json`、`models.json`、subagent config 与 `ccg-workflow.json` metadata 使用同目录临时文件、`fsync` 和 atomic rename 写入；逻辑合并保留非 CCG 字段。
 - 模板写入结果区分 `written`、`skipped`、`failed`。
 - 模板写入前拒绝 `.claude`、`codeagent-wrapper` 和旧模型 placeholder 残留。
@@ -139,9 +142,11 @@ requiredSpawns = 2 + (N_frontend + M_backend) + 1 + 1
 
 ## 扩展与 package lifecycle 边界
 
-`pi-subagents` 是唯一 required package。精选 catalog 还包含推荐的 `pi-mcp-adapter`、`pi-memctx`、`pi-session-continuity`，可选的 `pi-pr-review`，以及默认不选的实验性 `@vigolium/piolium`。
+`pi-subagents` 是唯一 required package。精选 catalog 还包含推荐的 `pi-mcp-adapter`、`pi-memctx`、`pi-session-continuity`，可选的 `pi-pr-review`，默认不选的实验性 `@vigolium/piolium`，以及九个 default-off options：`pi-simplify`、`pi-rtk-optimizer`、`pi-statusline`、`@juicesharp/rpiv-todo`、`@juicesharp/rpiv-ask-user-question`、`@narumitw/pi-plan-mode`、`pi-web-access`、`pi-hashline-edit-pro`、`pi-fff`。`pi-task` identity 歧义，当前 deferred。
 
-interactive init 可预选推荐项，但必须确认后才执行；non-interactive fresh install 只有显式 flags 才安装 optional packages。metadata ownership 为 `ccg-installed` / `adopted` / `missing`。update 只重装 assets 并保留 metadata；`ccg extensions` 独占 package lifecycle；uninstall 只删除 CCG-owned packages。命令使用受校验 package spec 和参数数组，不拼接 shell。
+interactive init 可预选推荐项，但 package/config mutation 必须最终确认后才执行；non-interactive fresh install 只有显式 flags 才安装 optional packages。metadata ownership 为 `ccg-installed` / `adopted` / `missing`。update 只重装 assets 并保留 metadata；`ccg extensions` 独占 package lifecycle；uninstall 只删除 CCG-owned packages。failed removal 在 package 仍存在时重试，package 已被外部删除时清理 stale metadata。命令使用受校验 package spec 和参数数组，不拼接 shell。
+
+`pi-web-access` 配置目标固定为 `~/.pi/web-search.json`，不受 `--install-dir` 影响。CCG 只在 `workflow` 字段缺失时 create/merge `workflow: "none"`；existing workflow、invalid JSON 和其他字段全部保留，package install 失败时不写配置，uninstall 永不删除该文件。
 
 `pi-subagents` 提供 orchestration 与 per-agent memory；`pi-memctx`、`pi-session-continuity`、`pi-mcp-adapter` 分别补充按需 context、durable handoff、lazy MCP proxy。稳定 prompt 前缀加 task 尾部 runtime context 只提升 cache friendliness，实际 cache hit 由 provider 决定。
 

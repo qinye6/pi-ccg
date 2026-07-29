@@ -51,7 +51,19 @@ export interface ManagedFileEntry {
 
 // Pi 扩展目录与安装状态
 export type PiExtensionTier = 'required' | 'recommended' | 'optional' | 'experimental'
-export type PiExtensionCategory = 'orchestration' | 'mcp' | 'context' | 'continuity' | 'review' | 'security'
+export type PiExtensionCategory
+  = | 'orchestration'
+    | 'mcp'
+    | 'context'
+    | 'continuity'
+    | 'review'
+    | 'security'
+    | 'editing'
+    | 'planning'
+    | 'search'
+    | 'ui'
+    | 'productivity'
+    | 'optimization'
 export type PiExtensionOwnership = 'ccg-installed' | 'adopted' | 'missing'
 
 export interface PiExtensionDefinition {

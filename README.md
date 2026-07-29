@@ -113,6 +113,17 @@ The installer shows `npm:pi-subagents` in the same extension checkbox list as th
 | Recommended | `npm:pi-session-continuity` | Durable checkpoints, handoffs, and recovery |
 | Optional | `npm:pi-pr-review` | Parallel GitHub PR review with structured findings |
 | Experimental | `npm:@vigolium/piolium` | Multi-phase security audit; disabled by default |
+| Optional | `npm:pi-simplify` | Code simplification assistance |
+| Optional | `npm:pi-rtk-optimizer` | Runtime/toolkit optimization |
+| Optional | `npm:pi-statusline` | Pi status-line UI |
+| Optional | `npm:@juicesharp/rpiv-todo` | Todo tracking |
+| Optional | `npm:@juicesharp/rpiv-ask-user-question` | Structured user questions |
+| Optional | `npm:@narumitw/pi-plan-mode` | Plan-mode workflow |
+| Optional | `npm:pi-web-access` | Web access with safely managed workflow default |
+| Optional | `npm:pi-hashline-edit-pro` | Hashline-aware editing |
+| Optional | `npm:pi-fff` | Productivity utilities |
+
+All nine newly added entries are disabled by default. `pi-task` is intentionally not listed because the unscoped npm package does not exist and the available scoped packages are not equivalent; CCG does not guess package identity.
 
 A non-interactive example:
 
@@ -140,7 +151,9 @@ Model settings are independent:
 - Review model → `ccg-reviewer` and `ccg-test-runner`
 - Scout and planner inherit Pi's configured `subagents.defaultModel`
 
-Use `--provider-file <path>` only for non-secret provider definitions. Do not place credentials in provider files, prompts, templates, tasks, logs, or metadata.
+Use `--provider-file <path>` only for non-secret provider definitions. Interactive onboarding can create a custom provider/model using an API-key environment-variable reference; it never requests or stores the real key. CCG recognizes only exact, verified model IDs when filling `contextWindow` and `maxTokens`; unknown models require explicit user values and are never guessed. Existing `models.json` data is inspected as missing/valid/invalid, invalid JSON is never overwritten, and exact provider/model merges preserve pricing, nested compatibility settings, sibling models, and unknown user fields.
+
+Verified capability presets currently cover `anthropic/claude-sonnet-5`, `anthropic/claude-fable-5`, `anthropic/claude-haiku-4-5-20251001`, `openai/gpt-5.6-sol`, `openai/gpt-5.6-terra`, `openai/gpt-5.6-luna`, and `google/gemini-3.5-flash`.
 
 `ccg extensions` uses the same required-runtime checkbox semantics. If `pi-subagents` is already installed or adopted, it stays checked and read-only, is never reinstalled, and is never added to a removal plan.
 
@@ -213,7 +226,9 @@ Content outside that block is preserved. Uninstall removes only managed files, m
 
 Pi CLI is the host runtime. `pi-subagents` is required and supplies orchestration, native supervisor coordination, and per-agent persistent `memory` frontmatter.
 
-The recommended profile adds `pi-mcp-adapter` for lazy MCP access, `pi-memctx` for searchable local knowledge and relevant context injection, and `pi-session-continuity` for durable checkpoints and handoffs. `pi-pr-review` is optional; `@vigolium/piolium` is experimental and disabled by default. Use `ccg extensions` to manage these packages. Packages that already existed are marked `adopted`; CCG removes only packages it installed and recorded as `ccg-installed`.
+The recommended profile adds `pi-mcp-adapter` for lazy MCP access, `pi-memctx` for searchable local knowledge and relevant context injection, and `pi-session-continuity` for durable checkpoints and handoffs. `pi-pr-review` is optional; `@vigolium/piolium` is experimental and disabled by default. The additional productivity/UI/editing entries are also default-off. Use `ccg extensions` to manage these packages. Packages that already existed are marked `adopted`; CCG removes only packages it installed and recorded as `ccg-installed`.
+
+When `pi-web-access` is selected, the final operation confirmation may also create or merge `workflow: "none"` in `~/.pi/web-search.json`. CCG changes only an absent `workflow` field, preserves existing workflows and invalid JSON, does not redirect this path with `--install-dir`, and never removes the file during uninstall.
 
 ## Publishing
 

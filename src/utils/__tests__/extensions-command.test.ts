@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   updateCcgMetadata: vi.fn(),
   inspectPiRuntime: vi.fn(),
   runPiPackageCommand: vi.fn(),
+  inspectPiWebSearchConfig: vi.fn(),
+  applyPiExtensionConfigOperation: vi.fn(),
 }))
 
 vi.mock('inquirer', () => ({
@@ -24,6 +26,15 @@ vi.mock('../pi-runtime', () => ({
   runPiPackageCommand: mocks.runPiPackageCommand,
 }))
 
+vi.mock('../pi-extension-config', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../pi-extension-config')>()
+  return {
+    ...actual,
+    inspectPiWebSearchConfig: mocks.inspectPiWebSearchConfig,
+    applyPiExtensionConfigOperation: mocks.applyPiExtensionConfigOperation,
+  }
+})
+
 const { extensions } = await import('../../commands/extensions')
 
 describe('ccg extensions command', () => {
@@ -33,7 +44,15 @@ describe('ccg extensions command', () => {
     mocks.updateCcgMetadata.mockReset()
     mocks.inspectPiRuntime.mockReset()
     mocks.runPiPackageCommand.mockReset()
+    mocks.inspectPiWebSearchConfig.mockReset()
+    mocks.applyPiExtensionConfigOperation.mockReset()
     mocks.updateCcgMetadata.mockResolvedValue(undefined)
+    mocks.inspectPiWebSearchConfig.mockResolvedValue({
+      status: 'valid',
+      path: '/home/user/.pi/web-search.json',
+      value: { workflow: 'none' },
+    })
+    mocks.applyPiExtensionConfigOperation.mockResolvedValue({ changed: true })
   })
 
   it('shows the required runtime in the same checkbox and preserves missing ownership when deselected', async () => {
@@ -136,28 +155,110 @@ describe('ccg extensions command', () => {
     expect(mocks.runPiPackageCommand).not.toHaveBeenCalledWith('install', 'npm:pi-subagents', expect.anything())
   })
 
-  it('does not perform package operations when the final confirmation is refused', async () => {
+  it('confirms and applies a config-only web-access operation', async () => {
     mocks.readCcgMetadata.mockResolvedValue({
       language: 'en',
-      extensions: [],
+      extensions: [{
+        id: 'web-access',
+        packageSpec: 'npm:pi-web-access',
+        selected: true,
+        ownership: 'adopted',
+        updatedAt: '2026-07-29T00:00:00.000Z',
+      }],
     })
     mocks.inspectPiRuntime.mockReturnValue({
       piAvailable: true,
       piVersion: 'pi 1.0.0',
-      piSubagentsAvailable: false,
-      packages: [],
+      piSubagentsAvailable: true,
+      packages: [
+        { packageSpec: 'npm:pi-subagents', version: '0.37.0' },
+        { packageSpec: 'npm:pi-web-access', version: '1.0.0' },
+      ],
       packageListError: null,
+    })
+    mocks.inspectPiWebSearchConfig.mockResolvedValue({
+      status: 'missing',
+      path: '/home/user/.pi/web-search.json',
     })
     mocks.prompt.mockImplementation(async (questions: Array<Record<string, unknown>>) => {
       const question = questions[0]
-      if (question.name === 'selectedIds') return { selectedIds: ['core-subagents'] }
-      if (question.name === 'confirm') return { confirm: false }
+      if (question.name === 'selectedIds') return { selectedIds: ['core-subagents', 'web-access'] }
+      if (question.name === 'confirm') return { confirm: true }
       throw new Error(`Unexpected prompt: ${String(question.name)}`)
     })
 
     await extensions({ installDir: '/tmp/custom-pi-home' })
 
     expect(mocks.runPiPackageCommand).not.toHaveBeenCalled()
+    expect(mocks.applyPiExtensionConfigOperation).toHaveBeenCalledWith({
+      extensionId: 'web-access',
+      action: 'create',
+      path: '/home/user/.pi/web-search.json',
+      field: 'workflow',
+      value: 'none',
+    })
+  })
+
+  it('does not apply a config-only operation when final confirmation is refused', async () => {
+    mocks.readCcgMetadata.mockResolvedValue({ language: 'en', extensions: [] })
+    mocks.inspectPiRuntime.mockReturnValue({
+      piAvailable: true,
+      piVersion: 'pi 1.0.0',
+      piSubagentsAvailable: true,
+      packages: [
+        { packageSpec: 'npm:pi-subagents', version: '0.37.0' },
+        { packageSpec: 'npm:pi-web-access', version: '1.0.0' },
+      ],
+      packageListError: null,
+    })
+    mocks.inspectPiWebSearchConfig.mockResolvedValue({
+      status: 'missing',
+      path: '/home/user/.pi/web-search.json',
+    })
+    mocks.prompt.mockImplementation(async (questions: Array<Record<string, unknown>>) => {
+      const question = questions[0]
+      if (question.name === 'selectedIds') return { selectedIds: ['core-subagents', 'web-access'] }
+      if (question.name === 'confirm') return { confirm: false }
+      throw new Error(`Unexpected prompt: ${String(question.name)}`)
+    })
+
+    await extensions({ installDir: '/tmp/custom-pi-home' })
+
+    expect(mocks.applyPiExtensionConfigOperation).not.toHaveBeenCalled()
     expect(mocks.updateCcgMetadata).not.toHaveBeenCalled()
+  })
+
+  it('does not write web config when the package installation fails', async () => {
+    mocks.readCcgMetadata.mockResolvedValue({ language: 'en', extensions: [] })
+    mocks.inspectPiRuntime.mockReturnValue({
+      piAvailable: true,
+      piVersion: 'pi 1.0.0',
+      piSubagentsAvailable: true,
+      packages: [{ packageSpec: 'npm:pi-subagents', version: '0.37.0' }],
+      packageListError: null,
+    })
+    mocks.inspectPiWebSearchConfig.mockResolvedValue({
+      status: 'missing',
+      path: '/home/user/.pi/web-search.json',
+    })
+    mocks.runPiPackageCommand.mockResolvedValue({
+      success: false,
+      command: 'pi install npm:pi-web-access',
+      packageSpec: 'npm:pi-web-access',
+      stdout: '',
+      stderr: 'registry unavailable',
+      exitCode: 1,
+    })
+    mocks.prompt.mockImplementation(async (questions: Array<Record<string, unknown>>) => {
+      const question = questions[0]
+      if (question.name === 'selectedIds') return { selectedIds: ['core-subagents', 'web-access'] }
+      if (question.name === 'confirm') return { confirm: true }
+      throw new Error(`Unexpected prompt: ${String(question.name)}`)
+    })
+
+    await extensions({ installDir: '/tmp/custom-pi-home' })
+
+    expect(mocks.runPiPackageCommand).toHaveBeenCalledWith('install', 'npm:pi-web-access', { piHome: '/tmp/custom-pi-home' })
+    expect(mocks.applyPiExtensionConfigOperation).not.toHaveBeenCalled()
   })
 })

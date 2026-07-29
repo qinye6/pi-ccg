@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- Added nine verified, default-off Pi extension catalog entries: `pi-simplify`, `pi-rtk-optimizer`, `pi-statusline`, `@juicesharp/rpiv-todo`, `@juicesharp/rpiv-ask-user-question`, `@narumitw/pi-plan-mode`, `pi-web-access`, `pi-hashline-edit-pro`, and `pi-fff`; deferred ambiguous `pi-task` identity instead of guessing.
+- Added safe `pi-web-access` configuration planning for `~/.pi/web-search.json`, creating or merging only an absent `workflow: "none"` after final confirmation.
+- Added custom provider/model onboarding with environment-variable credential references and exact verified model capability presets.
+
+### Changed
+
+- Provider discovery now distinguishes missing, valid, and invalid `models.json`; invalid JSON is never overwritten.
+- Provider/model updates merge by exact ID and recursively preserve pricing, compatibility data, sibling models, and unknown user fields.
+- `doctor` and `status` now report redacted provider capability and web-access configuration diagnostics.
+- Extension removal reconciliation retries failed removals while packages remain installed and cleans stale metadata after external removal.
+
+### Security
+
+- Third-party package and managed config mutations share explicit final confirmation. Existing web workflows and invalid JSON are preserved, and real provider credentials are never requested or stored.
+
+---
+
 ## [3.2.6] - 2026-07-29
 
 ### Fixed

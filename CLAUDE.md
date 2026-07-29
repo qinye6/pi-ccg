@@ -109,7 +109,10 @@ language → environment → extensions → scope → provider → frontend
 | `src/commands/doctor.ts` | doctor/status |
 | `src/commands/menu.ts` | Pi-only 菜单 |
 | `src/utils/installer.ts` | Pi install/uninstall |
-| `src/utils/pi-extensions.ts` | 扩展 catalog、selection、ownership |
+| `src/utils/pi-extensions.ts` | 扩展 catalog、selection、ownership、package/config execution plan |
+| `src/utils/pi-extension-config.ts` | `pi-web-access` JSON 三态检查与安全 create/merge |
+| `src/utils/pi-provider-presets.ts` | exact model capability presets 与 provenance |
+| `src/utils/pi-redaction.ts` | provider/config/diagnostic 集中脱敏 |
 | `src/utils/pi-runtime.ts` | Pi package inventory 与安全 lifecycle 命令 |
 | `src/utils/pi-paths.ts` | Pi 路径、agent 名、caps |
 | `src/utils/pi-config.ts` | model/provider/cap merge |
@@ -152,7 +155,7 @@ Pi CLI 是 host runtime。`pi-subagents` 是必需 package，安装命令为：
 pi install npm:pi-subagents
 ```
 
-精选 catalog：推荐 `pi-mcp-adapter`、`pi-memctx`、`pi-session-continuity`；可选 `pi-pr-review`；实验性 `@vigolium/piolium` 默认不选。interactive init 可默认勾选推荐项，但 package 操作必须经用户确认；non-interactive fresh install 只有显式 flags 才安装 optional packages。`ccg extensions` 是 package lifecycle 边界。
+精选 catalog：推荐 `pi-mcp-adapter`、`pi-memctx`、`pi-session-continuity`；可选 `pi-pr-review`；实验性 `@vigolium/piolium` 默认不选。另有九个 default-off 可选项：`pi-simplify`、`pi-rtk-optimizer`、`pi-statusline`、`@juicesharp/rpiv-todo`、`@juicesharp/rpiv-ask-user-question`、`@narumitw/pi-plan-mode`、`pi-web-access`、`pi-hashline-edit-pro`、`pi-fff`。`pi-task` 因 unscoped package 不存在且 scoped alternatives 不等价而 deferred，不得猜测 identity。interactive init 可默认勾选推荐项，但 package/config 操作必须经最终确认；non-interactive fresh install 只有显式 flags 才安装 optional packages。`ccg extensions` 是 package lifecycle 边界。
 
 Metadata ownership 为 `ccg-installed` / `adopted` / `missing`。update 只重装 CCG assets，保留选择且不执行 package 操作；uninstall 只删除 `ccg-installed` packages，保留 adopted packages。package spec 必须经 catalog/正则校验，并通过参数数组执行 `pi install/remove/update`。
 

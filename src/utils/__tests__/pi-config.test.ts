@@ -6,6 +6,8 @@ import {
   appendPiProviders,
   computeEffectiveDevParallelism,
   computeRequiredSpawns,
+  inspectPiModels,
+  mergePiProviders,
   mergePiSettingsSubagents,
   mergeSubagentExtensionConfig,
   reconcilePiSettingsSubagents,
@@ -192,6 +194,111 @@ describe('reconcilePiSettingsSubagents', () => {
     expect(second).toEqual({ changed: false, backupPath: null })
     const files = await fs.readdir(join(settingsPath, '..'))
     expect(files.filter(file => file.endsWith('.ccg-bak'))).toEqual(['settings.json.ccg-bak'])
+  })
+})
+
+describe('Pi models inspection and merge', () => {
+  it('distinguishes missing, invalid, and valid files', async () => {
+    const root = tempRoot('models-inspection')
+    const modelsPath = join(root, 'models.json')
+    expect((await inspectPiModels(modelsPath)).status).toBe('missing')
+
+    await fs.ensureDir(root)
+    await fs.writeFile(modelsPath, '{ invalid')
+    expect((await inspectPiModels(modelsPath)).status).toBe('invalid')
+
+    await fs.writeJson(modelsPath, {
+      providers: { demo: { models: [{ id: 'one' }, 'two'] } },
+    })
+    expect(await inspectPiModels(modelsPath)).toMatchObject({
+      status: 'valid',
+      providers: ['demo'],
+      models: ['demo/one', 'demo/two'],
+    })
+  })
+
+  it('merges providers and models by exact ID while preserving user fields', async () => {
+    const modelsPath = join(tempRoot('models-merge-aware'), 'models.json')
+    await fs.ensureDir(join(modelsPath, '..'))
+    await fs.writeJson(modelsPath, {
+      customTopLevel: true,
+      providers: {
+        demo: {
+          headers: { 'x-user': '$USER_HEADER' },
+          models: [
+            { id: 'existing', name: 'User name', contextWindow: 1000, custom: true },
+            { id: 'sibling', contextWindow: 2000 },
+          ],
+        },
+      },
+    })
+
+    const result = await mergePiProviders({
+      demo: {
+        modelOverrides: { existing: { maxTokens: 500 } },
+        models: [{ id: 'existing', maxTokens: 300 }, { id: 'new', contextWindow: 4000 }],
+      },
+    }, { modelsPath, force: true })
+
+    expect(result).toMatchObject({ changed: true, added: [], updated: ['demo'] })
+    expect(result.backupPath).toBe(`${modelsPath}.ccg-bak`)
+    const merged = await fs.readJson(modelsPath)
+    expect(merged.customTopLevel).toBe(true)
+    expect(merged.providers.demo.headers).toEqual({ 'x-user': '$USER_HEADER' })
+    expect(merged.providers.demo.models).toEqual([
+      { id: 'existing', name: 'User name', contextWindow: 1000, custom: true, maxTokens: 300 },
+      { id: 'sibling', contextWindow: 2000 },
+      { id: 'new', contextWindow: 4000 },
+    ])
+    expect(merged.providers.demo.modelOverrides).toEqual({ existing: { maxTokens: 500 } })
+  })
+
+  it('deep-merges exact model overrides without dropping pricing or unknown user fields', async () => {
+    const modelsPath = join(tempRoot('model-overrides-merge'), 'models.json')
+    await fs.ensureDir(join(modelsPath, '..'))
+    await fs.writeJson(modelsPath, {
+      providers: {
+        anthropic: {
+          modelOverrides: {
+            'claude-sonnet-5': {
+              cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+              customPricingSource: 'user-managed',
+              compat: { userFlag: true },
+            },
+          },
+        },
+      },
+    })
+
+    await mergePiProviders({
+      anthropic: {
+        modelOverrides: {
+          'claude-sonnet-5': {
+            contextWindow: 1000000,
+            maxTokens: 128000,
+            compat: { forceAdaptiveThinking: true },
+          },
+        },
+      },
+    }, { modelsPath, force: true })
+
+    const merged = await fs.readJson(modelsPath)
+    expect(merged.providers.anthropic.modelOverrides['claude-sonnet-5']).toEqual({
+      cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+      customPricingSource: 'user-managed',
+      contextWindow: 1000000,
+      maxTokens: 128000,
+      compat: { userFlag: true, forceAdaptiveThinking: true },
+    })
+  })
+
+  it('refuses to overwrite invalid models JSON', async () => {
+    const modelsPath = join(tempRoot('models-invalid'), 'models.json')
+    await fs.ensureDir(join(modelsPath, '..'))
+    await fs.writeFile(modelsPath, '{ invalid')
+    await expect(mergePiProviders({ demo: { models: [{ id: 'one' }] } }, { modelsPath }))
+      .rejects.toThrow('Refusing to overwrite invalid models.json')
+    expect(await fs.readFile(modelsPath, 'utf8')).toBe('{ invalid')
   })
 })
 

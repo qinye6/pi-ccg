@@ -95,7 +95,7 @@ templates/pi/
 
 ## 扩展与上下文边界
 
-`pi-subagents` 是唯一 required package。推荐扩展为 `pi-mcp-adapter`、`pi-memctx`、`pi-session-continuity`；`pi-pr-review` 可选；实验性 `@vigolium/piolium` 默认不选。模板不得假定 optional tool 一定存在：可用时按需调用，不可用时以 task-string plan/handoff 和内建 reviewer 降级。
+`pi-subagents` 是唯一 required package。推荐扩展为 `pi-mcp-adapter`、`pi-memctx`、`pi-session-continuity`；`pi-pr-review` 可选；实验性 `@vigolium/piolium` 默认不选。catalog 还提供九个 default-off options：`pi-simplify`、`pi-rtk-optimizer`、`pi-statusline`、`@juicesharp/rpiv-todo`、`@juicesharp/rpiv-ask-user-question`、`@narumitw/pi-plan-mode`、`pi-web-access`、`pi-hashline-edit-pro`、`pi-fff`。`pi-task` identity 未核验，不属于 catalog。模板不得假定 optional tool 一定存在：可用时按需调用，不可用时以 task-string plan/handoff 和内建 reviewer 降级。
 
 静态角色说明与 coordination rules 保持稳定，运行期 plan、component data、handoff、findings 放在 task string 后部。lazy MCP proxy 与按需 memory injection 用于降低上下文抖动，但 provider cache hit 不作承诺。
 

@@ -31,8 +31,10 @@ The planner assigns a stable `componentId` and one owning builder to each compon
 - `pi-session-continuity` may persist checkpoints and handoffs; otherwise Pi uses task-string handoffs.
 - `pi-mcp-adapter` exposes MCP lazily; agents must discover availability before use.
 - `pi-pr-review` and `@vigolium/piolium` supplement but do not replace `ccg-reviewer` or required gates.
+- Default-off productivity/UI/editing extensions (`pi-simplify`, `pi-rtk-optimizer`, `pi-statusline`, `@juicesharp/rpiv-todo`, `@juicesharp/rpiv-ask-user-question`, `@narumitw/pi-plan-mode`, `pi-web-access`, `pi-hashline-edit-pro`, and `pi-fff`) remain optional agent tools and do not alter component ownership or repair routing.
+- `pi-task` is not cataloged until an exact package identity is provided.
 
-Optional tools fail gracefully. No agent may copy API keys, tokens, or MCP credentials into memory, tasks, messages, logs, handoffs, or summaries.
+Optional tools fail gracefully. No agent may copy API keys, tokens, or MCP credentials into memory, tasks, messages, logs, handoffs, or summaries. Provider onboarding accepts environment-variable references only; verified capability presets are exact-ID matches and unknown model limits are never inferred.
 
 ## Model routing
 

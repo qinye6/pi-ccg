@@ -69,7 +69,7 @@ beforeEach(async () => {
       return { value: extensionSelection }
     }
     if (message === '安装范围:') return { value: 'user' }
-    if (message.includes('模型供应商过滤')) return { value: '__all__' }
+    if (message.includes('模型供应商')) return { value: '__all__' }
     if (message.includes('选择前端模型')) return { value: 'demo/frontend' }
     if (message.includes('选择后端模型')) return { value: 'demo/backend' }
     if (message.includes('选择审查/测试模型')) return { value: 'demo/review' }
@@ -132,6 +132,27 @@ describe('interactive init with a custom Pi home', () => {
         ownership: 'missing',
       }),
     ])
+  })
+
+  it('writes exact verified model capabilities without overriding built-in pricing', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await init({
+      installDir: piHome,
+      skipPrompt: true,
+      installProjectAssets: false,
+      noOptionalExtensions: true,
+      frontendModel: 'anthropic/claude-sonnet-5',
+    })
+
+    const models = await fs.readJson(join(piHome, 'models.json'))
+    expect(models.providers.anthropic.modelOverrides['claude-sonnet-5']).toMatchObject({
+      contextWindow: 1000000,
+      maxTokens: 128000,
+      reasoning: true,
+    })
+    expect(models.providers.anthropic.modelOverrides['claude-sonnet-5']).not.toHaveProperty('cost')
   })
 
   it('does not install assets or packages after the final confirmation is refused', async () => {

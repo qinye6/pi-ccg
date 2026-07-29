@@ -48,10 +48,21 @@ memory-context       recommended
 session-continuity   recommended
 pr-review            optional
 security-audit       experimental
+simplify             optional; default off
+rtk-optimizer        optional; default off
+statusline           optional; default off
+todo                 optional; default off
+ask-user-question    optional; default off
+plan-mode            optional; default off
+web-access           optional; default off
+hashline-edit-pro    optional; default off
+fff                  optional; default off
 ```
 
 Interactive `init` and `ccg extensions` both show `core-subagents` in the same checkbox list as the rest of the catalog. When missing, it is checked by default and can be deselected to keep workflow assets while recording runtime ownership as `missing`. When already installed or adopted, it stays checked and read-only, is never reinstalled, and is never added to a removal plan.
 
-Interactive management previews every package operation and requires confirmation. Existing packages are `adopted`; only `ccg-installed` optional packages may be removed by CCG.
+Interactive management previews every package and managed config operation and requires one final confirmation. Existing packages are `adopted`; only `ccg-installed` optional packages may be removed by CCG. A failed removal remains recorded for retry while the package is installed; if it has already been removed outside CCG, the next reconciliation drops stale metadata without issuing another remove command.
+
+For `web-access`, the preview may include a safe `~/.pi/web-search.json` create/merge that sets only an absent `workflow` field to `none`. Existing values and invalid JSON are preserved, and uninstall never removes this file.
 
 Update never silently changes third-party packages or adds newly recommended packages. Use `ccg extensions` for package operations.

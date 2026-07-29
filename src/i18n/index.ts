@@ -382,6 +382,54 @@ const zhCN = {
           '安全代理可能读取较大范围仓库内容并调用本地工具。',
         ],
       },
+      simplify: {
+        label: 'Pi Simplify',
+        description: '辅助精简代码与降低不必要复杂度。',
+        securityNotes: ['可能修改项目源码；使用前应审查 diff 并运行测试。'],
+      },
+      'rtk-optimizer': {
+        label: 'Pi RTK Optimizer',
+        description: '优化 tool output，减少重复上下文与 token 占用。',
+        securityNotes: ['会处理工具输出；不要让输出包含 credential 或其他 secret。'],
+      },
+      statusline: {
+        label: 'Pi Statusline',
+        description: '在 Pi 终端中显示会话、模型与项目状态。',
+        securityNotes: ['状态栏可能展示项目或会话 metadata；共享截图前请检查内容。'],
+      },
+      todo: {
+        label: 'RPIV Todo',
+        description: '为 Pi 会话提供结构化 todo 与进度跟踪。',
+        securityNotes: ['任务内容可能持久化项目上下文；不要写入 secret。'],
+      },
+      'ask-user-question': {
+        label: 'RPIV Ask User Question',
+        description: '提供结构化的用户问题与选项交互。',
+        securityNotes: ['扩展可暂停工作流等待输入；不要通过问题文本收集真实 credential。'],
+      },
+      'plan-mode': {
+        label: 'Pi Plan Mode',
+        description: '在写入代码前提供只读探索与实施计划阶段。',
+        securityNotes: ['计划可能包含项目细节；共享或持久化前请检查敏感信息。'],
+      },
+      'web-access': {
+        label: 'Pi Web Access',
+        description: '为 Pi 提供网页搜索、抓取与浏览能力。',
+        securityNotes: [
+          '网络访问会向外部站点发送请求；不要传递 credential、cookie 或私有 URL。',
+          'CCG 仅在最终确认后且 workflow 缺失时写入 ~/.pi/web-search.json 的 workflow=none；已有值与无效 JSON 均保留。',
+        ],
+      },
+      'hashline-edit-pro': {
+        label: 'Pi Hashline Edit Pro',
+        description: '使用 hashline 定位提供更可靠的代码编辑。',
+        securityNotes: ['会修改项目文件；应通过版本控制和测试验证变更。'],
+      },
+      fff: {
+        label: 'Pi FFF',
+        description: '提供快速文件查找与项目导航。',
+        securityNotes: ['可能扫描较大范围文件树；注意私有文件与生成目录。'],
+      },
     },
     nav: {
       back: '← 返回上一步',
@@ -1021,6 +1069,54 @@ const en: typeof zhCN = {
           'Experimental 0.0.x package; inspect the source and release before enabling it.',
           'Security agents may read broad portions of the repository and invoke local tools.',
         ],
+      },
+      simplify: {
+        label: 'Pi Simplify',
+        description: 'Helps simplify code and remove unnecessary complexity.',
+        securityNotes: ['It may modify project source files; review the diff and run tests.'],
+      },
+      'rtk-optimizer': {
+        label: 'Pi RTK Optimizer',
+        description: 'Optimizes tool output to reduce repeated context and token usage.',
+        securityNotes: ['It processes tool output; keep credentials and other secrets out of that output.'],
+      },
+      statusline: {
+        label: 'Pi Statusline',
+        description: 'Displays session, model, and project status in the Pi terminal.',
+        securityNotes: ['The status line may expose project or session metadata; inspect screenshots before sharing.'],
+      },
+      todo: {
+        label: 'RPIV Todo',
+        description: 'Adds structured todo and progress tracking to Pi sessions.',
+        securityNotes: ['Task data may persist project context; do not place secrets in it.'],
+      },
+      'ask-user-question': {
+        label: 'RPIV Ask User Question',
+        description: 'Provides structured user questions and selectable answers.',
+        securityNotes: ['It may pause workflows for input; never request real credentials in question text.'],
+      },
+      'plan-mode': {
+        label: 'Pi Plan Mode',
+        description: 'Adds a read-only exploration and implementation planning phase before edits.',
+        securityNotes: ['Plans may contain project details; inspect them before sharing or persisting.'],
+      },
+      'web-access': {
+        label: 'Pi Web Access',
+        description: 'Adds web search, fetch, and browsing capabilities to Pi.',
+        securityNotes: [
+          'Network access sends requests to external sites; never include credentials, cookies, or private URLs.',
+          'After final confirmation, CCG only adds workflow=none to ~/.pi/web-search.json when workflow is absent; existing values and invalid JSON are preserved.',
+        ],
+      },
+      'hashline-edit-pro': {
+        label: 'Pi Hashline Edit Pro',
+        description: 'Uses hashline anchors for more reliable source-code edits.',
+        securityNotes: ['It modifies project files; verify changes with version control and tests.'],
+      },
+      fff: {
+        label: 'Pi FFF',
+        description: 'Provides fast file finding and project navigation.',
+        securityNotes: ['It may scan broad file trees; account for private files and generated directories.'],
       },
     },
     nav: {
