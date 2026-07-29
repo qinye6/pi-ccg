@@ -9,7 +9,7 @@ CCG 将 Pi CLI 改造成一个有边界的多智能体开发 supervisor。Pi 是
 
 [English](./README.md)
 
-> 当前包版本：`3.2.6` · Node.js `>=20`
+> 当前包版本：`3.2.7` · Node.js `>=20`
 
 ## 工作流程
 

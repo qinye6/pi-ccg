@@ -1,6 +1,6 @@
 # CCG for Pi CLI
 
-**Last Updated**: 2026-07-29 (v3.2.6)
+**Last Updated**: 2026-07-30 (v3.2.7)
 
 > 当前架构为 Pi-only。历史变更见 [CHANGELOG.md](./CHANGELOG.md)。
 

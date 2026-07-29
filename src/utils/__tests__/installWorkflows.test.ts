@@ -47,7 +47,7 @@ describe('Pi npm package contract', () => {
       'templates/pi/',
     ])
     expect(manifest.name).toBe('pi-ccg')
-    expect(manifest.version).toBe('3.2.6')
+    expect(manifest.version).toBe('3.2.7')
     expect(manifest.bin).toEqual({
       'pi-ccg': 'bin/ccg.mjs',
       'ccg': 'bin/ccg.mjs',

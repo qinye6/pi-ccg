@@ -1,6 +1,6 @@
 {
   "name": "pi-ccg",
-  "version": "3.2.6",
+  "version": "3.2.7",
   "description": "Pi CLI workflow with bounded dynamic subagents, role-specific models, automated testing, and targeted review loops",
   "type": "module",
   "packageManager": "pnpm@10.17.1",
