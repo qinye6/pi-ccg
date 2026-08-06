@@ -11,7 +11,26 @@ ccg-project-scout
 → componentId-targeted repair (up to two rounds)
 ```
 
-## Discovery and planning
+## Native Pi command surface
+
+- `/ccg <request>` is the main entry: the leader confirms requirements, then autonomously plans, builds, tests, reviews, and performs targeted repairs.
+- `/ccg-board [taskId]` is a read-only progress view.
+- `/ccg-replay [taskId]` is a read-only retrospective timeline.
+- `/ccg-resume <taskId>` restores only the leader checkpoint and always starts new children with fresh context.
+- `/ccg-go` remains compatible with earlier installations.
+
+## Leader persona and output style
+
+The leader may use `default`, `engineer-professional`, `nekomata-engineer`, `laowang-engineer`, `ojousama-engineer`, or one of four abyss variants: `abyss-cultivator`, `abyss-concise`, `abyss-command`, and `abyss-ritual`. The twelve-stage `ccg init` flow offers this choice interactively; non-interactive setup uses `--persona <name>`. Use `ccg style <name>` to switch and `ccg style default` to restore the default.
+
+Persona selection is metadata-backed and survives `ccg update`. It affects only leader prose for `/ccg` and `/ccg-go`; child contracts/JSON, tests, reviews, board, credentials, and the workflow coordination contract remain unchanged. User `SYSTEM.md` and `APPEND_SYSTEM.md` are untouched.
+
+## Durable task board
+
+The leader projects lifecycle state into `.pi/ccg/tasks/<taskId>/board.json`, `events.jsonl`, and `summary.md` using `ccg.taskBoard.v1` and `ccg.taskEvent.v1`. This is a bounded, redacted projection of `pi-subagents` lifecycle/FleetView, not a second scheduler. Children never write it; uninstall preserves it for replay.
+
+The phase machine is `intake → planning → building → testing → reviewing → repairing → completed|blocked`. Only the leader assigns agents and migrates state. Human intervention is reserved for unresolved product decisions, unsafe ownership conflicts, environment/permission blockers, or failure after two repair rounds.
+
 
 The scout reads without modifying files. The planner creates stable `componentId` values, frontend/backend classification, optional `componentProfile`, file ownership, dependencies, waves, builder count, concurrency constraints, and validation commands.
 
@@ -25,9 +44,9 @@ CCG installs generic `ccg-frontend-builder` and `ccg-backend-builder` templates.
 
 ## Ownership, handoff, test and repair
 
-Each component has one owning builder. Cross-component changes are escalated to Pi. Each builder returns a `FINISH` handoff with its `componentId`, changed files, validation, assumptions, contract changes, and risks.
+Each component has one owning builder. Cross-component changes are escalated to Pi. Each builder returns a `FINISH` handoff to the leader with its `componentId`, changed files, validation, assumptions, contract changes, and risks. Builders never start testers/reviewers or contact siblings directly.
 
-Test-runner executes applicable typecheck, test, lint, and build commands. Reviewer independently checks correctness, quality, and security. Failures and `Critical` findings identify `componentId`; Pi sends narrow repairs only to the owning builder, for at most two rounds.
+The leader validates the handoff and starts a fresh test-runner, then a fresh reviewer. Both are read-only with respect to product code. Failures and `Critical` findings return to the leader with `componentId`; Pi sends narrow repairs only to the owning builder, for at most two rounds.
 
 ## Complete-workflow extensions
 

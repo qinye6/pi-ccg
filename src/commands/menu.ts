@@ -17,6 +17,7 @@ import {
 import { doctor, status } from './doctor'
 import { extensions } from './extensions'
 import { init } from './init'
+import { style } from './style'
 import { update } from './update'
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -167,11 +168,12 @@ export async function showMainMenu(): Promise<void> {
         { name: '1. 安装 / 初始化 Pi workflow', value: 'init' },
         { name: '2. 更新 / 安全重装 Pi workflow', value: 'update' },
         { name: '3. 管理上下文、MCP、连续性、审查与安全扩展', value: 'extensions' },
-        { name: '4. 配置 Frontend / Backend / Review 模型', value: 'models' },
-        { name: '5. 配置 builder 与派生上限', value: 'limits' },
-        { name: '6. Doctor 健康检查', value: 'doctor' },
-        { name: '7. Status 安装概况', value: 'status' },
-        { name: '8. 安全卸载 CCG managed Pi assets 与 CCG-owned packages', value: 'uninstall' },
+        { name: '4. 切换 CCG leader 人格与输出风格', value: 'style' },
+        { name: '5. 配置 Frontend / Backend / Review 模型', value: 'models' },
+        { name: '6. 配置 builder 与派生上限', value: 'limits' },
+        { name: '7. Doctor 健康检查', value: 'doctor' },
+        { name: '8. Status 安装概况', value: 'status' },
+        { name: '9. 安全卸载 CCG managed Pi assets 与 CCG-owned packages', value: 'uninstall' },
         new inquirer.Separator(),
         { name: 'Q. 退出', value: 'quit' },
       ],
@@ -181,6 +183,7 @@ export async function showMainMenu(): Promise<void> {
     if (action === 'init') await init()
     else if (action === 'update') await update()
     else if (action === 'extensions') await extensions()
+    else if (action === 'style') await style()
     else if (action === 'models') await configureModels()
     else if (action === 'limits') await configureLimits()
     else if (action === 'doctor') await doctor()

@@ -1,3 +1,5 @@
+import type { PiPersonaId } from '../utils/pi-personas'
+
 // 支持的语言
 export type SupportedLang = 'zh-CN' | 'en'
 
@@ -98,6 +100,7 @@ export interface CcgInstallerMetadata {
     frontendModel?: string
     backendModel?: string
     reviewModel?: string
+    persona?: PiPersonaId
     caps: PiCapsConfig
   }
   extensions?: PiExtensionMetadataEntry[]
@@ -160,6 +163,7 @@ export interface InitOptions {
   frontendModel?: string
   backendModel?: string
   reviewModel?: string
+  persona?: PiPersonaId
   providerFile?: string
   extensionIds?: string[]
   noOptionalExtensions?: boolean

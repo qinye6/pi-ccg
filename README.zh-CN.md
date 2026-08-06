@@ -97,7 +97,7 @@ maxSubagentDepth = 1
 - Node.js `>=20`
 - Pi CLI
 
-运行十一阶段交互安装器：
+运行十二阶段交互安装器：
 
 ```bash
 npx pi-ccg init
@@ -133,6 +133,7 @@ npx pi-ccg init \
   --project-assets \
   --install-required-package \
   --extensions mcp-adapter,memory-context,session-continuity \
+  --persona engineer-professional \
   --frontend-model provider/frontend-model \
   --backend-model provider/backend-model \
   --review-model provider/review-model \
@@ -143,6 +144,12 @@ npx pi-ccg init \
 ```
 
 fresh non-interactive install 不会静默安装 optional packages；只有 `--extensions` 显式选择时才安装。必需的 `pi-subagents` 仍需通过 `--install-required-package` 单独授权，非交互模式同样不会静默安装。`--no-optional-extensions` 表示仅安装核心工作流。
+
+### Leader 输出风格
+
+`ccg init` 增加 persona 阶段。可选风格为 `default`、`engineer-professional`、`nekomata-engineer`、`laowang-engineer`、`ojousama-engineer`、`abyss-cultivator`、`abyss-concise`、`abyss-command` 和 `abyss-ritual`。非交互模式使用 `--persona <name>`；安装后使用 `ccg style <name>` 切换，使用 `ccg style default` 恢复默认。
+
+选择会持久化到 CCG metadata，并由 `ccg update` 保留。persona 只影响 `/ccg` 与 `/ccg-go` 的 leader prose，不改变 child contract/JSON、测试、审查、board、凭据和协调协议。CCG 不修改用户自管的 `SYSTEM.md` 或 `APPEND_SYSTEM.md`。
 
 模型分开配置：
 
@@ -166,6 +173,7 @@ fresh non-interactive install 不会静默安装 optional packages；只有 `--e
 ```text
 ccg              打开 Pi workflow 交互菜单
 ccg init         安装 CCG assets 与用户选择的扩展
+ccg style <name> 切换持久化的 leader 输出风格；`default` 恢复默认
 ccg update [--install-dir <path>]  仅重装受管资产，不执行 package 操作
 ccg extensions [--install-dir <path>]  明确管理精选 Pi 扩展
 ccg doctor [--install-dir <path>] [--project-dir <path>]  检查 runtime、agents、caps、models、extensions 与 MCP 配置存在性
@@ -183,6 +191,7 @@ ccg uninstall    仅移除受管资产和 CCG-owned packages
 --backend-model <provider/model>
 --review-model <provider/model>
 --provider-file <path>
+--persona <name>
 --dev-agent-cap <number>
 --global-concurrency-limit <number>
 --max-spawns-per-session <number>
@@ -212,7 +221,11 @@ ccg uninstall    仅移除受管资产和 CCG-owned packages
 ```text
 <project>/AGENTS.md                  # 仅 CCG managed block
 <project>/.pi/chains/ccg-plan.chain.md
-<project>/.pi/prompts/ccg-go.md
+<project>/.pi/prompts/ccg.md
+<project>/.pi/prompts/ccg-board.md
+<project>/.pi/prompts/ccg-replay.md
+<project>/.pi/prompts/ccg-resume.md
+<project>/.pi/prompts/ccg-go.md        # 兼容入口
 <project>/.pi/settings.json
 <project>/.pi/mcp.json.example
 ```
@@ -224,7 +237,23 @@ CCG 只修改 `AGENTS.md` 中以下 marker 之间的受管块：
 <!-- CCG:PI-END -->
 ```
 
-块外用户内容必须保留。卸载只删除受管文件、受管配置键和受管块。
+块外用户内容必须保留。卸载只删除受管文件、受管配置键和受管块，并保留 `.pi/ccg/tasks/` 复盘历史与用户自建 prompt。
+
+## Pi slash 命令与任务看板
+
+安装后，Pi 可直接发现 `/ccg` 主入口。`/ccg-board` 查看当前或指定任务，`/ccg-replay` 只读生成时间线复盘，`/ccg-resume` 校验 durable checkpoint 后继续，`/ccg-go` 保留为兼容入口。
+
+leader 是唯一状态写入者和 agent 指派者。每个 child 都使用 `context: "fresh"`；builder 将 `FINISH` 交给 leader，leader 再启动独立 test-runner/reviewer，失败也先返回 leader，再路由 owning builder。测试和审查 agent 永不修改产品代码。
+
+持久化状态位于：
+
+```text
+<project>/.pi/ccg/tasks/<taskId>/board.json
+<project>/.pi/ccg/tasks/<taskId>/events.jsonl
+<project>/.pi/ccg/tasks/<taskId>/summary.md
+```
+
+看板是 `pi-subagents` lifecycle/FleetView 的有界投影，不是第二个编排引擎。它只保存脱敏摘要和 artifact references，不复制完整 transcript，也不记录凭据或用户自管 MCP 值。
 
 ## 集成、memory 与 continuity
 

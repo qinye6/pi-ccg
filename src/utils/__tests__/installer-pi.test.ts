@@ -6,6 +6,7 @@ import { installPiWorkflow } from '../installer'
 import {
   CCG_MANAGED_BLOCK_END,
   CCG_MANAGED_BLOCK_START,
+  CCG_PI_MANAGED_PROMPT_NAMES,
 } from '../pi-paths'
 
 interface Sandbox {
@@ -17,7 +18,7 @@ interface Sandbox {
 
 interface FixtureOptions {
   badAgent?: boolean
-  omitPrompt?: boolean
+  omitPrompt?: string
 }
 
 let currentRoot: string | null = null
@@ -75,8 +76,9 @@ Pi home: {{PI_AGENT_HOME}}
 Project dir: {{PI_PROJECT_DIR}}
 `, 'utf-8')
 
-  if (!options.omitPrompt) {
-    await fs.writeFile(join(templateDir, 'prompts', 'ccg-go.md'), `# CCG Go
+  for (const promptFile of CCG_PI_MANAGED_PROMPT_NAMES) {
+    if (options.omitPrompt === promptFile) continue
+    await fs.writeFile(join(templateDir, 'prompts', promptFile), `# ${promptFile}
 Frontend={{FRONTEND_MODEL}}
 Backend={{BACKEND_MODEL}}
 Review={{REVIEW_MODEL}}
@@ -161,6 +163,9 @@ describe('installPiWorkflow', () => {
     expect(result.success).toBe(true)
     expect(await fs.pathExists(join(piHome, 'agents', 'ccg-backend-builder.md'))).toBe(true)
     expect(await fs.pathExists(join(piHome, 'agents', 'ccg-reviewer.md'))).toBe(true)
+    for (const promptFile of CCG_PI_MANAGED_PROMPT_NAMES) {
+      expect(await fs.pathExists(join(piHome, 'prompts', promptFile))).toBe(true)
+    }
     expect(await fs.pathExists(projectDir)).toBe(false)
   })
 
@@ -177,7 +182,9 @@ describe('installPiWorkflow', () => {
 
     expect(result.success).toBe(true)
     expect(await fs.pathExists(join(projectDir, '.pi', 'chains', 'ccg-plan.chain.md'))).toBe(true)
-    expect(await fs.pathExists(join(projectDir, '.pi', 'prompts', 'ccg-go.md'))).toBe(true)
+    for (const promptFile of CCG_PI_MANAGED_PROMPT_NAMES) {
+      expect(await fs.pathExists(join(projectDir, '.pi', 'prompts', promptFile))).toBe(true)
+    }
     expect(await fs.pathExists(join(projectDir, '.pi', 'settings.json'))).toBe(true)
     expect(await fs.pathExists(join(projectDir, '.pi', 'mcp.json.example'))).toBe(true)
   })
@@ -392,14 +399,15 @@ describe('installPiWorkflow', () => {
   })
 
   it('records missing template errors while continuing to process other files', async () => {
-    const { piHome, projectDir, templateDir } = await createSandbox('missing-source', { omitPrompt: true })
+    const { piHome, projectDir, templateDir } = await createSandbox('missing-source', { omitPrompt: 'ccg-board.md' })
 
     const result = await installPiWorkflow({ piHome, projectDir, templateDir, force: true })
 
     expect(result.success).toBe(false)
-    expect(result.errors.some(error => error.includes('prompts/ccg-go.md'))).toBe(true)
+    expect(result.errors.some(error => error.includes('prompts/ccg-board.md'))).toBe(true)
     expect(await fs.pathExists(join(piHome, 'agents', 'ccg-backend-builder.md'))).toBe(true)
     expect(await fs.pathExists(join(projectDir, '.pi', 'chains', 'ccg-plan.chain.md'))).toBe(true)
-    expect(await fs.pathExists(join(projectDir, '.pi', 'prompts', 'ccg-go.md'))).toBe(false)
+    expect(await fs.pathExists(join(projectDir, '.pi', 'prompts', 'ccg-board.md'))).toBe(false)
+    expect(await fs.pathExists(join(projectDir, '.pi', 'prompts', 'ccg.md'))).toBe(true)
   })
 })

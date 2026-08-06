@@ -97,7 +97,7 @@ Prerequisites:
 - Node.js `>=20`
 - Pi CLI
 
-Run the eleven-stage interactive installer:
+Run the twelve-stage interactive installer:
 
 ```bash
 npx pi-ccg init
@@ -133,6 +133,7 @@ npx pi-ccg init \
   --project-assets \
   --install-required-package \
   --extensions mcp-adapter,memory-context,session-continuity \
+  --persona engineer-professional \
   --frontend-model provider/frontend-model \
   --backend-model provider/backend-model \
   --review-model provider/review-model \
@@ -143,6 +144,12 @@ npx pi-ccg init \
 ```
 
 Fresh non-interactive installs do not install optional packages unless `--extensions` explicitly selects them. The required `pi-subagents` package is still gated separately by `--install-required-package`; there are no silent installs in non-interactive mode. Use `--no-optional-extensions` for core-only installation.
+
+### Leader output styles
+
+`ccg init` includes a persona stage. The selectable styles are `default`, `engineer-professional`, `nekomata-engineer`, `laowang-engineer`, `ojousama-engineer`, `abyss-cultivator`, `abyss-concise`, `abyss-command`, and `abyss-ritual`. Use `--persona <name>` in non-interactive mode. After installation, `ccg style <name>` switches the persisted style and `ccg style default` restores the default.
+
+The selection is stored in CCG metadata and preserved by `ccg update`. It affects only leader prose for `/ccg` and `/ccg-go`; child contracts/JSON, tests, reviews, board data, credentials, and coordination are unchanged. CCG does not modify user-managed `SYSTEM.md` or `APPEND_SYSTEM.md`.
 
 Model settings are independent:
 
@@ -162,6 +169,7 @@ Verified capability presets currently cover `anthropic/claude-sonnet-5`, `anthro
 ```text
 ccg              Interactive Pi workflow menu
 ccg init         Install or configure managed Pi assets and selected extensions
+ccg style <name> Switch the persisted leader output style; `default` restores the default
 ccg update [--install-dir <path>]  Reinstall managed assets without changing packages
 ccg extensions [--install-dir <path>]  Explicitly manage curated Pi extensions
 ccg doctor [--install-dir <path>] [--project-dir <path>]  Check Pi, required runtime, agents, caps, models, extensions, and MCP presence
@@ -179,6 +187,7 @@ Useful init flags:
 --backend-model <provider/model>
 --review-model <provider/model>
 --provider-file <path>
+--persona <name>
 --dev-agent-cap <number>
 --global-concurrency-limit <number>
 --max-spawns-per-session <number>
@@ -208,7 +217,11 @@ Optional project-level assets:
 ```text
 <project>/AGENTS.md                  # CCG managed block only
 <project>/.pi/chains/ccg-plan.chain.md
-<project>/.pi/prompts/ccg-go.md
+<project>/.pi/prompts/ccg.md
+<project>/.pi/prompts/ccg-board.md
+<project>/.pi/prompts/ccg-replay.md
+<project>/.pi/prompts/ccg-resume.md
+<project>/.pi/prompts/ccg-go.md        # compatibility entry
 <project>/.pi/settings.json
 <project>/.pi/mcp.json.example
 ```
@@ -220,7 +233,23 @@ CCG only changes the block between:
 <!-- CCG:PI-END -->
 ```
 
-Content outside that block is preserved. Uninstall removes only managed files, managed configuration keys, and the managed block.
+Content outside that block is preserved. Uninstall removes only managed files, managed configuration keys, and the managed block. It preserves `.pi/ccg/tasks/` replay history and user-created prompts.
+
+## Pi slash commands and task board
+
+After installation, Pi discovers `/ccg` as the main natural-language entry. `/ccg-board` displays the current or selected task, `/ccg-replay` produces a read-only timeline, `/ccg-resume` validates a durable checkpoint before continuing, and `/ccg-go` remains a compatibility entry.
+
+The leader is the only state writer and agent dispatcher. Each child uses `context: "fresh"`; builders hand `FINISH` to the leader, the leader starts the independent test-runner/reviewer, and failures return through the leader to the owning builder. Test and review agents never modify product code.
+
+Durable state is stored under:
+
+```text
+<project>/.pi/ccg/tasks/<taskId>/board.json
+<project>/.pi/ccg/tasks/<taskId>/events.jsonl
+<project>/.pi/ccg/tasks/<taskId>/summary.md
+```
+
+This board is a bounded projection of `pi-subagents` lifecycle/FleetView, not a second orchestration engine. It stores redacted summaries and artifact references only, never full transcripts, credentials, or user-managed MCP values.
 
 ## Integrations, memory, and continuity
 

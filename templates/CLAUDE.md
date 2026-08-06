@@ -8,7 +8,7 @@
 
 `templates/pi/` 是 CCG 当前唯一安装和 npm 发布的模板目录。`package.json#files` 只包含 `templates/pi/`，不包含旧 commands、hooks、prompts、skills、rules 或 wrapper 资产。
 
-## Pi assets（12 个）
+## Pi assets（25 个）
 
 ```text
 templates/pi/
@@ -23,7 +23,21 @@ templates/pi/
 ├── chains/
 │   └── ccg-plan.chain.md
 ├── prompts/
+│   ├── ccg.md
+│   ├── ccg-board.md
+│   ├── ccg-replay.md
+│   ├── ccg-resume.md
 │   └── ccg-go.md
+├── personas/
+│   ├── default.md
+│   ├── engineer-professional.md
+│   ├── nekomata-engineer.md
+│   ├── laowang-engineer.md
+│   ├── ojousama-engineer.md
+│   ├── abyss-cultivator.md
+│   ├── abyss-concise.md
+│   ├── abyss-command.md
+│   └── abyss-ritual.md
 ├── extensions/
 │   └── subagent-config.json
 ├── project/
@@ -40,7 +54,8 @@ templates/pi/
 |---|---|
 | `agents/*.md` | `~/.pi/agent/agents/` |
 | `chains/ccg-plan.chain.md` | `<project>/.pi/chains/` 或 `~/.pi/agent/chains/` |
-| `prompts/ccg-go.md` | `<project>/.pi/prompts/` 或 `~/.pi/agent/prompts/` |
+| `prompts/{ccg,ccg-board,ccg-replay,ccg-resume,ccg-go}.md` | `<project>/.pi/prompts/` 或 `~/.pi/agent/prompts/` |
+| `personas/*.md` | 由 leader prompt 按选择加载 |
 | `AGENTS.managed.md` | `<project>/AGENTS.md` 的 CCG managed block |
 | `extensions/subagent-config.json` | `~/.pi/agent/extensions/subagent/config.json` 合并 |
 | `project/settings.json` | `<project>/.pi/settings.json`，仅不存在时创建 |
@@ -49,8 +64,9 @@ templates/pi/
 ## Agent 设计
 
 - 当前 runtime 只有六个固定 role template：scout、planner、backend-builder、frontend-builder、test-runner、reviewer。
-- 所有 agent 使用 `defaultContext: fresh`。
+- 所有 agent 使用 `defaultContext: fresh`；`/ccg-resume` 只恢复 leader checkpoint，不复用旧 child conversation。
 - supervisor 调用使用 `context: "fresh"`，跨 run context 由 task string 内联。
+- supervisor 是唯一 agent 指派者、状态迁移者和 `.pi/ccg/` writer；child 不得写 board/events/summary。
 - `ccg-project-scout`、`ccg-planner` 和所有 backend/frontend builder 实例使用必需 `pi-subagents` package 提供的 per-agent persistent `memory` frontmatter。
 - 该 memory 能力独立于 Pi core parent/session/project memory，由同一个必需 package 提供，不是第二个 extension。
 - `ccg-reviewer`、`ccg-test-runner` 不启用 memory，并设置 `completionGuard: false`。
@@ -58,11 +74,18 @@ templates/pi/
 - builder 只实现分配的组件，不规划、不派生下级 agent。
 - supervisor 必须在 builder 写入前完成 contract relay 并等待 supervisor `START` approval。
 - builder 必须遵守 ownership barrier；跨组件修改需回报 supervisor，而不是擅自修改。
-- builder 完成时必须输出 `FINISH` handoff，包含 `componentId`、变更文件、验证、假设与风险。
+- builder 完成时必须输出 `FINISH` handoff，包含 `componentId`、变更文件、验证、假设与风险，且只交给 supervisor。
+- supervisor 再启动 fresh test-runner/reviewer；两者不得修改产品代码。
 - test/review failure 必须携带 `componentId`，供 supervisor 回派 owning builder。
 - 定向修复最多两轮。
 
-## 模板变量
+## Durable board 与命令边界
+
+`/ccg` 是主入口；`/ccg-board`、`/ccg-replay` 只读；`/ccg-resume` 校验 checkpoint 后继续；`/ccg-go` 为兼容入口。leader 将 `ccg.taskBoard.v1` / `ccg.taskEvent.v1` 投影到 `.pi/ccg/tasks/<taskId>/board.json`、`events.jsonl`、`summary.md`。该目录是 project-local runtime history，uninstall 默认保留。看板不复制完整 transcript/stdout，不得包含凭据或用户 MCP 配置值。
+
+## Leader persona 与输出边界
+
+安装器可为 leader 选择 `default`、`engineer-professional`、`nekomata-engineer`、`laowang-engineer`、`ojousama-engineer`，或四种 abyss 风格 `abyss-cultivator`、`abyss-concise`、`abyss-command`、`abyss-ritual`。persona 只作用于 `/ccg` 与 `/ccg-go` 的 leader prose；不改变 child contracts/JSON、测试、审查、board、凭据或 A2A 协调，也不修改用户的 `SYSTEM.md` / `APPEND_SYSTEM.md`。选择由 CCG metadata 持久化，update 保留；`ccg style default` 可恢复默认风格。
 
 | 变量 | 含义 |
 |---|---|

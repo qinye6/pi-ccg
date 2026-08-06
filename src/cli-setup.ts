@@ -7,6 +7,7 @@ import { doctor, status } from './commands/doctor'
 import { extensions } from './commands/extensions'
 import { init } from './commands/init'
 import { showMainMenu } from './commands/menu'
+import { style } from './commands/style'
 import { update } from './commands/update'
 import { initI18n } from './i18n'
 import { uninstallPiWorkflow } from './utils/installer'
@@ -20,6 +21,7 @@ function customizeHelp(sections: any[]): any[] {
       `  ${ansis.green('--frontend-model')} <provider/model>`,
       `  ${ansis.green('--backend-model')} <provider/model>`,
       `  ${ansis.green('--review-model')} <provider/model>`,
+      `  ${ansis.green('--persona')} <id>`,
       `  ${ansis.green('--provider-file')} <path>`,
       `  ${ansis.green('--extensions')} <id,id>`,
       `  ${ansis.green('--no-optional-extensions')}`,
@@ -73,6 +75,7 @@ export async function setupCommands(cli: CAC): Promise<void> {
     .option('--frontend-model <model>', 'Model for all dynamic frontend builder instances')
     .option('--backend-model <model>', 'Backend builder model')
     .option('--review-model <model>', 'Reviewer and test-runner model')
+    .option('--persona <id>', 'CCG leader persona/output style')
     .option('--provider-file <path>', 'JSON provider definitions to append without exposing credentials')
     .option('--extensions <id,id>', 'Explicit optional Pi extension IDs for non-interactive installs')
     .option('--no-optional-extensions', 'Do not install optional Pi extensions')
@@ -101,6 +104,22 @@ export async function setupCommands(cli: CAC): Promise<void> {
         maxSpawnsPerSession: positiveNumber(options.maxSpawnsPerSession),
         maxSubagentDepth: positiveNumber(options.maxSubagentDepth),
       })
+    })
+
+  cli
+    .command('style [persona]', 'Change only the CCG leader persona/output style')
+    .option('--persona <id>', 'Persona ID (alternative to the positional argument)')
+    .option('--install-dir, -d <path>', 'Pi agent home used by the existing installation')
+    .option('--project-dir <path>', 'Project containing CCG managed Pi prompts')
+    .action(async (
+      persona: string | undefined,
+      options: {
+        persona?: string
+        installDir?: string
+        projectDir?: string
+      },
+    ) => {
+      await style(persona, options)
     })
 
   cli

@@ -1,4 +1,5 @@
 import type { InitOptions, InstallScope, PiCapsConfig, PiExtensionMetadataEntry, SupportedLang } from '../types'
+import type { PiPersonaId } from '../utils/pi-personas'
 import ansis from 'ansis'
 import fs from 'fs-extra'
 import inquirer from 'inquirer'
@@ -7,6 +8,13 @@ import { join } from 'pathe'
 import { i18n, initI18n } from '../i18n'
 import { readCcgMetadata } from '../utils/config'
 import { installPiWorkflow } from '../utils/installer'
+import {
+  DEFAULT_PI_PERSONA_ID,
+  PI_PERSONA_IDS,
+  getPiPersonaDefinition,
+  isPiPersonaId,
+  normalizePiPersonaId,
+} from '../utils/pi-personas'
 import {
   applyPiExtensionSelection,
   buildPiExtensionSelectionStates,
@@ -32,10 +40,10 @@ import {
 } from '../utils/pi-runtime'
 import { getCurrentVersion } from '../utils/version'
 
-type StepId = 'lang' | 'env' | 'extensions' | 'scope' | 'provider' | 'frontend' | 'backend' | 'review' | 'limits' | 'entry' | 'summary'
+type StepId = 'lang' | 'env' | 'extensions' | 'scope' | 'provider' | 'frontend' | 'backend' | 'review' | 'limits' | 'persona' | 'entry' | 'summary'
 type StepResult = 'next' | 'back' | 'cancel' | StepId
 
-const STEP_ORDER: StepId[] = ['lang', 'env', 'extensions', 'scope', 'provider', 'frontend', 'backend', 'review', 'limits', 'entry', 'summary']
+const STEP_ORDER: StepId[] = ['lang', 'env', 'extensions', 'scope', 'provider', 'frontend', 'backend', 'review', 'limits', 'persona', 'entry', 'summary']
 const BACK = '__back__'
 const CANCEL = '__cancel__'
 
@@ -58,6 +66,7 @@ interface WizardState {
   frontendModel?: string
   backendModel?: string
   reviewModel?: string
+  persona: PiPersonaId
   caps: PiCapsConfig
   installProjectAssets: boolean
 }
@@ -174,6 +183,31 @@ function addPresetOverride(state: WizardState, modelReference: string | undefine
       ...(preset[providerId].modelOverrides ?? {}),
     },
   }
+}
+
+function normalizeRequestedPersona(value: unknown, strict: boolean): PiPersonaId {
+  if (value === undefined || value === '') return DEFAULT_PI_PERSONA_ID
+  if (typeof value !== 'string' || !isPiPersonaId(value)) {
+    if (strict) throw new Error(`Unknown Pi persona: ${String(value)}`)
+    return DEFAULT_PI_PERSONA_ID
+  }
+  return normalizePiPersonaId(value) as PiPersonaId
+}
+
+function personaLabel(id: PiPersonaId): string {
+  const definition = getPiPersonaDefinition(id) as unknown as Record<string, unknown>
+  const label = i18n.language === 'en'
+    ? definition.labelEn ?? definition.nameEn ?? definition.label
+    : definition.labelZh ?? definition.nameZh ?? definition.label
+  return typeof label === 'string' ? label : id
+}
+
+function personaDescription(id: PiPersonaId): string {
+  const definition = getPiPersonaDefinition(id) as unknown as Record<string, unknown>
+  const description = i18n.language === 'en'
+    ? definition.descriptionEn ?? definition.description
+    : definition.descriptionZh ?? definition.description
+  return typeof description === 'string' ? description : ''
 }
 
 async function runStep(step: StepId, state: WizardState): Promise<StepResult> {
@@ -318,6 +352,20 @@ async function runStep(step: StepId, state: WizardState): Promise<StepResult> {
     return 'next'
   }
 
+  if (step === 'persona') {
+    const { value } = await inquirer.prompt<{ value: string }>([{
+      type: 'list',
+      name: 'value',
+      message: tx('piExtensions.persona.prompt'),
+      choices: [...PI_PERSONA_IDS.map(id => ({ name: `${personaLabel(id)}${personaDescription(id) ? ` — ${personaDescription(id)}` : ''}`, value: id })), ...navChoices()],
+      default: state.persona,
+    }])
+    if (value === BACK) return 'back'
+    if (value === CANCEL) return 'cancel'
+    state.persona = normalizePiPersonaId(value) as PiPersonaId
+    return 'next'
+  }
+
   if (step === 'entry') {
     const { value } = await inquirer.prompt<{ value: string }>([{
       type: 'list', name: 'value', message: '项目入口:',
@@ -354,6 +402,7 @@ async function runStep(step: StepId, state: WizardState): Promise<StepResult> {
     console.log(ansis.yellow(tx('piExtensions.warnings.runtimeUnavailable', { command: PI_SUBAGENTS_INSTALL_COMMAND })))
   }
   console.log(`  ${tx('piExtensions.fields.scope')}: ${state.scope}`)
+  console.log(`  ${tx('piExtensions.fields.persona')}: ${personaLabel(state.persona)}`)
   console.log(`  ${tx('piExtensions.fields.frontend')}: ${state.frontendModel ?? tx('piExtensions.summary.inheritDefault')}`)
   console.log(`  ${tx('piExtensions.fields.backend')}: ${state.backendModel ?? tx('piExtensions.summary.inheritDefault')}`)
   console.log(`  ${tx('piExtensions.fields.review')}: ${state.reviewModel ?? tx('piExtensions.summary.inheritDefault')}`)
@@ -370,6 +419,7 @@ async function runStep(step: StepId, state: WizardState): Promise<StepResult> {
       { name: tx('piExtensions.confirm.editBackend'), value: 'backend' },
       { name: tx('piExtensions.confirm.editReview'), value: 'review' },
       { name: tx('piExtensions.confirm.editLimits'), value: 'limits' },
+      { name: tx('piExtensions.confirm.editPersona'), value: 'persona' },
       { name: tx('piExtensions.confirm.editEntry'), value: 'entry' },
       { name: tx('piExtensions.nav.cancel'), value: CANCEL },
     ],
@@ -415,6 +465,7 @@ async function writeMetadata(
       frontendModel: state.frontendModel,
       backendModel: state.backendModel,
       reviewModel: state.reviewModel,
+      persona: state.persona,
       caps: state.caps,
     },
     extensions,
@@ -446,6 +497,7 @@ export async function init(options: InitOptions = {}): Promise<void> {
     frontendModel: options.frontendModel ?? options.frontend,
     backendModel: options.backendModel ?? options.backend,
     reviewModel: options.reviewModel,
+    persona: normalizeRequestedPersona(options.persona, options.skipPrompt === true),
     caps: normalizeCaps(options),
     installProjectAssets: options.installProjectAssets ?? true,
   }
@@ -481,13 +533,14 @@ export async function init(options: InitOptions = {}): Promise<void> {
   const providers = await readProviderFile(options.providerFile)
   const spinner = ora(tx('piExtensions.outcomes.spinner')).start()
   try {
-    const result = await installPiWorkflow({
+    const result = await (installPiWorkflow as unknown as (options: Record<string, unknown>) => ReturnType<typeof installPiWorkflow>)({
       piHome,
       projectDir: process.cwd(),
       installProjectAssets: state.installProjectAssets,
       frontendModel: state.frontendModel,
       backendModel: state.backendModel,
       reviewModel: state.reviewModel,
+      persona: state.persona,
       caps: state.caps,
       providers,
       force: options.force,

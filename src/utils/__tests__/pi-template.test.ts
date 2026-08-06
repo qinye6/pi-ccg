@@ -181,8 +181,37 @@ describe('assertNoLegacyResidue', () => {
   })
 })
 
-// ─────────────────────────────────────────────────────────────
-// F. pi-subagents per-agent persistent memory
+describe('Pi role boundaries', () => {
+  it('keeps every child fresh and prevents role or board ownership escalation', async () => {
+    const agentDir = join(PACKAGE_ROOT, 'templates', 'pi', 'agents')
+    const readAgent = (name: string): Promise<string> => fs.readFile(join(agentDir, `${name}.md`), 'utf-8')
+    const [scout, planner, backend, frontend, tester, reviewer] = await Promise.all([
+      readAgent('ccg-project-scout'),
+      readAgent('ccg-planner'),
+      readAgent('ccg-backend-builder'),
+      readAgent('ccg-frontend-builder'),
+      readAgent('ccg-test-runner'),
+      readAgent('ccg-reviewer'),
+    ])
+
+    for (const content of [scout, planner, backend, frontend, tester, reviewer]) {
+      expect(content).toContain('defaultContext: fresh')
+      expect(content).toContain('.pi/ccg/')
+    }
+    expect(scout).toContain('不实现、不测试、不派生或指派 agent')
+    expect(planner).toContain('不写代码、不运行命令、不派生或指派 agent')
+    for (const builder of [backend, frontend]) {
+      expect(builder).toContain('不得直接启动 tester/reviewer')
+      expect(builder).toContain('不得请求 `subagent`')
+      expect(builder).toContain('局部自检不能替代 leader')
+    }
+    expect(tester).toContain('不编辑产品代码')
+    expect(tester).toContain('不扩大 scope')
+    expect(reviewer).toContain('不直接修复')
+    expect(reviewer).toContain('交给 leader 路由')
+  })
+})
+
 // ─────────────────────────────────────────────────────────────
 describe('pi-subagents memory frontmatter', () => {
   it('enables project-scoped per-agent memory only where tool permissions make the scope safe', async () => {

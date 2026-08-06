@@ -19,8 +19,21 @@ const EXPECTED_PI_ASSETS = [
   'chains/ccg-plan.chain.md',
   'extensions/subagent-config.json',
   'mcp/nocturne.example.json',
+  'personas/abyss-command.md',
+  'personas/abyss-concise.md',
+  'personas/abyss-cultivator.md',
+  'personas/abyss-ritual.md',
+  'personas/default.md',
+  'personas/engineer-professional.md',
+  'personas/laowang-engineer.md',
+  'personas/nekomata-engineer.md',
+  'personas/ojousama-engineer.md',
   'project/settings.json',
+  'prompts/ccg-board.md',
   'prompts/ccg-go.md',
+  'prompts/ccg-replay.md',
+  'prompts/ccg-resume.md',
+  'prompts/ccg.md',
 ]
 
 function collectFiles(dir: string): string[] {
@@ -80,7 +93,11 @@ describe('Pi npm package contract', () => {
   it('documents v2 dynamic generic-builder coordination semantics in Pi templates', () => {
     const managedBlock = readPiTemplate('AGENTS.managed.md')
     const chain = readPiTemplate('chains/ccg-plan.chain.md')
-    const prompt = readPiTemplate('prompts/ccg-go.md')
+    const prompt = readPiTemplate('prompts/ccg.md')
+    const compatibilityPrompt = readPiTemplate('prompts/ccg-go.md')
+    const boardPrompt = readPiTemplate('prompts/ccg-board.md')
+    const replayPrompt = readPiTemplate('prompts/ccg-replay.md')
+    const resumePrompt = readPiTemplate('prompts/ccg-resume.md')
     const planner = readPiTemplate('agents/ccg-planner.md')
     const frontendBuilder = readPiTemplate('agents/ccg-frontend-builder.md')
     const backendBuilder = readPiTemplate('agents/ccg-backend-builder.md')
@@ -114,12 +131,26 @@ describe('Pi npm package contract', () => {
     expect(prompt).toContain('agent: "ccg-frontend-builder"')
     expect(prompt).not.toContain(RETIRED_MINIPROGRAM_AGENT)
 
+    expect(prompt).toContain('ccg.taskBoard.v1')
+    expect(prompt).toContain('ccg.taskEvent.v1')
+    expect(prompt).toContain('Leader-only A2A 接力')
+    expect(prompt).toContain('context: "fresh"')
+    expect(prompt).toContain('只有 leader 可写 `.pi/ccg/`')
+    expect(compatibilityPrompt).toContain('`/ccg` 的兼容入口')
+    expect(boardPrompt).toContain('不得创建、修改或删除任何任务文件')
+    expect(boardPrompt).toContain('不是第二个调度引擎')
+    expect(replayPrompt).toContain('不得重新执行任务')
+    expect(resumePrompt).toContain('不恢复或复用旧 child conversation')
+    expect(resumePrompt).toContain('context: "fresh"')
+
     for (const builder of [frontendBuilder, backendBuilder]) {
       expect(builder).toContain('ccg.builderStart.v2')
       expect(builder).toContain('ccg.builderFinish.v2')
       expect(builder).toContain('ownershipCompliance')
       expect(builder).toContain('contractChanges')
+      expect(builder).toContain('不得直接启动 tester/reviewer')
       expect(builder).toContain('不得请求 `subagent`')
+      expect(builder).toContain('不能替代 leader 后续启动的独立 test-runner/reviewer')
     }
 
     expect(testRunner).toContain('coordinationChecks')
@@ -127,6 +158,10 @@ describe('Pi npm package contract', () => {
     expect(testRunner).toContain('unapprovedContractChanges')
     expect(reviewer).toContain('coordinationAudit')
     expect(reviewer).toContain('unrelayedContractChanges')
+    expect(testRunner).toContain('不编辑产品代码')
+    expect(testRunner).toContain('失败只以 `ccg.testResult.v2` 返回 leader')
+    expect(reviewer).toContain('不直接修复')
+    expect(reviewer).toContain('只通过 `ccg.reviewResult.v2` 交给 leader 路由')
   })
 
   it('renders every Pi template without legacy tokens or unresolved CCG variables', () => {

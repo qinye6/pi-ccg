@@ -4,9 +4,11 @@ import fs from 'fs-extra'
 import { join } from 'pathe'
 import { version as packageVersion } from '../../package.json'
 import { initI18n } from '../i18n'
+import { isPiPersonaId, normalizeCcgPersonaMetadata } from '../utils/pi-personas'
 import {
   CCG_MANAGED_BLOCK_START,
   CCG_PI_ACTIVE_AGENT_NAMES,
+  CCG_PI_MANAGED_PROMPT_NAMES,
   CCG_PI_RETIRED_AGENT_NAMES,
   getCcgMetadataPath,
   getPiAgentHome,
@@ -142,6 +144,13 @@ function metadataLanguage(metadata: Record<string, unknown> | null): 'zh-CN' | '
   return metadata?.language === 'en' ? 'en' : 'zh-CN'
 }
 
+function metadataPersona(metadata: Record<string, unknown> | null): unknown {
+  const choices = metadata?.lastChoices
+  return typeof choices === 'object' && choices !== null && !Array.isArray(choices)
+    ? (choices as Record<string, unknown>).persona
+    : undefined
+}
+
 async function collectChecks(options: DoctorOptions = {}): Promise<Check[]> {
   const projectDir = options.projectDir ?? process.cwd()
   const piHome = options.installDir ?? getPiAgentHome()
@@ -231,20 +240,26 @@ async function collectChecks(options: DoctorOptions = {}): Promise<Check[]> {
     join(piHome, 'chains', 'ccg-plan.chain.md'),
     join(getProjectPiChainsDir(projectDir), 'ccg-plan.chain.md'),
   ))
-  const prompt = await firstExisting(assetCandidates(
-    scope,
-    join(piHome, 'prompts', 'ccg-go.md'),
-    join(getProjectPiPromptsDir(projectDir), 'ccg-go.md'),
-  ))
+  const promptPaths = await Promise.all(CCG_PI_MANAGED_PROMPT_NAMES.map(async promptFile => ({
+    promptFile,
+    path: await firstExisting(assetCandidates(
+      scope,
+      join(piHome, 'prompts', promptFile),
+      join(getProjectPiPromptsDir(projectDir), promptFile),
+    )),
+  })))
+  const missingPrompts = promptPaths.filter(item => !item.path).map(item => item.promptFile)
   checks.push({
     label: 'Plan chain',
     status: chain ? OK : WARN,
     detail: chain ?? `ccg-plan.chain.md missing for ${scope ?? 'unknown'} install scope`,
   })
   checks.push({
-    label: 'Prompt workflow',
-    status: prompt ? OK : WARN,
-    detail: prompt ?? `ccg-go.md missing for ${scope ?? 'unknown'} install scope`,
+    label: 'CCG prompt commands',
+    status: missingPrompts.length === 0 ? OK : WARN,
+    detail: missingPrompts.length === 0
+      ? `${CCG_PI_MANAGED_PROMPT_NAMES.length}/${CCG_PI_MANAGED_PROMPT_NAMES.length} installed: /ccg, /ccg-board, /ccg-replay, /ccg-resume, /ccg-go`
+      : `missing for ${scope ?? 'unknown'} install scope: ${missingPrompts.join(', ')}`,
   })
 
   if (scope === 'user') {
@@ -344,6 +359,28 @@ async function collectChecks(options: DoctorOptions = {}): Promise<Check[]> {
         : 'not found',
   })
 
+  const rawPersona = metadataPersona(metadata)
+  const persona = normalizeCcgPersonaMetadata(metadata)
+  checks.push({
+    label: 'CCG leader persona',
+    status: rawPersona === undefined || isPiPersonaId(rawPersona) ? OK : WARN,
+    detail: rawPersona === undefined
+      ? `${persona} (default; no saved selection)`
+      : isPiPersonaId(rawPersona)
+        ? persona
+        : `invalid saved persona; runtime fallback=${persona}`,
+  })
+
+  const boardTasksRoot = join(projectDir, '.pi', 'ccg', 'tasks')
+  const boardTasksRootExists = await fs.pathExists(boardTasksRoot)
+  checks.push({
+    label: 'CCG task board',
+    status: boardTasksRootExists ? OK : SKIP,
+    detail: boardTasksRootExists
+      ? `runtime history root detected at ${boardTasksRoot}`
+      : 'created lazily by /ccg; uninstall preserves replay history',
+  })
+
   const memoryDir = join(projectDir, '.pi', 'agent-memory')
   const memoryExists = await fs.pathExists(memoryDir)
   checks.push({
@@ -417,10 +454,21 @@ export async function status(options: DoctorOptions = {}): Promise<void> {
   const webConfig = webAccessEnabled
     ? await inspectPiWebSearchConfig(getPiWebSearchConfigPath())
     : null
+  const scope = installScope(metadata)
+  const commandPaths = await Promise.all(CCG_PI_MANAGED_PROMPT_NAMES.map(promptFile => firstExisting(assetCandidates(
+    scope,
+    join(piHome, 'prompts', promptFile),
+    join(getProjectPiPromptsDir(options.projectDir ?? process.cwd()), promptFile),
+  ))))
+  const installedCommands = commandPaths.filter(Boolean).length
+  const boardTasksRoot = join(options.projectDir ?? process.cwd(), '.pi', 'ccg', 'tasks')
   console.log(ansis.cyan.bold(`\n  CCG for Pi CLI v${packageVersion}\n`))
   console.log(`  Pi CLI:       ${runtime.piVersion ?? 'not found'}`)
   console.log(`  pi-subagents: ${runtime.piSubagentsAvailable ? 'installed' : 'missing (required)'}`)
   console.log(`  Extensions:   ${selectedInstalled}/${selected.length} selected installed; owned=${owned}, adopted=${adopted}`)
+  console.log(`  Commands:     ${installedCommands}/${CCG_PI_MANAGED_PROMPT_NAMES.length} installed`)
+  console.log(`  Persona:      ${normalizeCcgPersonaMetadata(metadata)}`)
+  console.log(`  Task board:   ${await fs.pathExists(boardTasksRoot) ? boardTasksRoot : 'not created yet'}`)
   console.log(`  Install scope:${metadata ? ` ${String(metadata.scope ?? 'unknown')}` : ' not installed'}`)
   console.log(`  Agent models: ${modelReferences(settings).length || 'inherit default'}`)
   console.log(`  Provider file:${modelsInspection.status === 'valid' ? ` valid (${modelsInspection.providers.length} provider(s))` : ` ${modelsInspection.status}`}`)

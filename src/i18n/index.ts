@@ -332,6 +332,7 @@ const zhCN = {
       frontend: 'Frontend',
       backend: 'Backend',
       review: 'Review/Test',
+      persona: 'Persona',
       caps: 'Caps',
       piHome: 'Pi home',
       project: 'Project',
@@ -446,6 +447,9 @@ const zhCN = {
     prompt: {
       message: '选择 Pi 扩展（缺失的必需运行时默认勾选，可取消以仅安装 workflow assets）:',
     },
+    persona: {
+      prompt: '选择 CCG leader 人格与输出风格:',
+    },
     warnings: {
       execution: '  Pi packages 以当前用户完整权限执行。安装前请审核 package 源码与发布内容。',
       credentials: '  CCG 不会保存 MCP/API credential，也不会覆盖用户自管的 .mcp.json / .pi/mcp.json。',
@@ -471,6 +475,7 @@ const zhCN = {
       editBackend: '修改后端模型',
       editReview: '修改审查模型',
       editLimits: '修改代理上限',
+      editPersona: '修改人格与输出风格',
       editEntry: '修改项目入口',
     },
     operations: {
@@ -1020,6 +1025,7 @@ const en: typeof zhCN = {
       frontend: 'Frontend',
       backend: 'Backend',
       review: 'Review/Test',
+      persona: 'Persona',
       caps: 'Caps',
       piHome: 'Pi home',
       project: 'Project',
@@ -1134,6 +1140,9 @@ const en: typeof zhCN = {
     prompt: {
       message: 'Select Pi extensions (the missing required runtime is checked by default and can be deselected to install workflow assets only):',
     },
+    persona: {
+      prompt: 'Select the CCG leader persona and output style:',
+    },
     warnings: {
       execution: '  Pi packages execute with your full user permissions. Review package sources and releases before installation.',
       credentials: '  CCG never stores MCP/API credentials and never overwrites user-managed .mcp.json / .pi/mcp.json files.',
@@ -1159,6 +1168,7 @@ const en: typeof zhCN = {
       editBackend: 'Edit backend model',
       editReview: 'Edit review model',
       editLimits: 'Edit agent caps',
+      editPersona: 'Edit persona and output style',
       editEntry: 'Edit project entry',
     },
     operations: {

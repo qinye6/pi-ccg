@@ -19,21 +19,24 @@ npx pi-ccg → bin/ccg.mjs → dist/cli.mjs → src/cli.ts → setupCommands()
 | 命令 | 实现 | 作用 |
 |---|---|---|
 | `ccg` | `commands/menu.ts` | Pi workflow 交互菜单 |
-| `ccg init` / `ccg i` | `commands/init.ts` | 十一阶段 Pi 安装/配置与扩展选择向导 |
+| `ccg init` / `ccg i` | `commands/init.ts` | 十二阶段 Pi 安装/配置与扩展选择向导 |
+| `ccg style <name>` | `commands/style.ts` | 切换持久化的 leader 输出风格 |
 | `ccg update [--install-dir <path>]` | `commands/update.ts` | 从 metadata 恢复选择并安全重装；不执行 package 操作 |
 | `ccg extensions [--install-dir <path>]` | `commands/extensions.ts` | 管理扩展 catalog、选择与 package lifecycle |
 | `ccg doctor [--install-dir <path>] [--project-dir <path>]` | `commands/doctor.ts` | 检查 Pi CLI、必需 runtime、agents、caps、models、extensions、MCP 配置存在性 |
 | `ccg status [--install-dir <path>] [--project-dir <path>]` | `commands/doctor.ts` | 显示安装与 extension ownership 概况 |
 | `ccg uninstall` | `uninstallPiWorkflow()` | 移除 CCG assets 与 CCG-owned packages，保留 adopted packages |
 
-`init` 十一阶段状态机：
+`init` 十二阶段状态机：
 
 ```text
 language → environment → extensions → scope → provider → frontend model
-→ backend model → review model → limits → entry → summary
+→ backend model → review model → limits → persona → entry → summary
 ```
 
-主要 options：`--extensions`、`--no-optional-extensions`、`--install-required-package`、`--frontend-model`、`--backend-model`、`--review-model`、`--provider-file`、四个 cap 参数、`--project-assets/--no-project-assets`、`--install-dir`、`--skip-prompt`、`--force`。`--preserve-extensions` 仅供 update 保留 metadata 且禁止 package reconciliation。
+persona 可选 `default`、`engineer-professional`、`nekomata-engineer`、`laowang-engineer`、`ojousama-engineer`、`abyss-cultivator`、`abyss-concise`、`abyss-command`、`abyss-ritual`。交互式 init 在 persona 阶段选择；非交互式 init 使用 `--persona <name>`。`ccg style <name>` 切换风格，`ccg style default` 恢复默认；选择写入 CCG metadata，update 保留选择。persona 只改变 `/ccg` 与 `/ccg-go` leader prose，不改变 child contracts/JSON、测试、审查、board、凭据或协调协议，也不修改用户 `SYSTEM.md` / `APPEND_SYSTEM.md`。
+
+主要 options：`--extensions`、`--no-optional-extensions`、`--install-required-package`、`--frontend-model`、`--backend-model`、`--review-model`、`--provider-file`、`--persona`、四个 cap 参数、`--project-assets/--no-project-assets`、`--install-dir`、`--skip-prompt`、`--force`。`--preserve-extensions` 仅供 update 保留 metadata 且禁止 package reconciliation。
 
 ## Pi 安装器
 
@@ -49,7 +52,7 @@ uninstallPiWorkflow(options)
 ```text
 installPiAgents
 installPiChain
-installPiPromptWorkflow
+installPiPromptWorkflow  # 安装 /ccg、/ccg-board、/ccg-replay、/ccg-resume、/ccg-go
 installManagedAgentsBlock
 installProjectPiSettings
 installSubagentExtensionConfig
@@ -70,7 +73,8 @@ installPiProviders
 
 <project>/AGENTS.md
 <project>/.pi/chains/
-<project>/.pi/prompts/
+<project>/.pi/prompts/              # 五个 CCG prompt commands
+<project>/.pi/ccg/tasks/<taskId>/   # runtime board/replay history，leader 写入，卸载保留
 <project>/.pi/settings.json
 <project>/.pi/mcp.json.example
 ```
@@ -117,21 +121,23 @@ requiredSpawns = 2 + (N_frontend + M_backend) + 1 + 1
 
 - planner 产出 `componentId`、ownership、依赖 waves、component profile 和测试计划。
 - supervisor relay contract 后必须等待 supervisor `START` approval，才能启动可写 builder。
+- supervisor 是唯一 agent 指派者、任务状态迁移者和 `.pi/ccg/` board writer；board 是 lifecycle/FleetView 的有界投影。
 - builder task string 必须内联相关 plan slice、前序 wave handoff 和边界约束。
 - builder 只能改 ownership 范围内的文件，跨组件变更交由 supervisor 协调。
-- builder 完成时输出 `FINISH` handoff。
+- builder 完成时输出 `FINISH` handoff，只返回 supervisor；不得直接启动 tester/reviewer 或联系 sibling。
+- supervisor 以 fresh context 启动 test-runner/reviewer；两者只验证/审查，不修改产品代码。
 - test/review failure 必须携带 `componentId`，定向修复最多两轮。
 
 ## 关键模块
 
 | 文件 | 作用 |
 |---|---|
-| `commands/init.ts` | 十一阶段向导、扩展选择、metadata 写入 |
+| `commands/init.ts` | 十二阶段向导、扩展选择、persona 与 metadata 写入 |
 | `commands/extensions.ts` | catalog 状态、用户确认、安装/移除与 ownership |
 | `commands/update.ts` | metadata 驱动 assets 更新；不执行第三方 package 操作 |
 | `commands/doctor.ts` | required/selected/skipped 健康检查与脱敏状态 |
 | `commands/menu.ts` | Pi-only 菜单 |
-| `cli-setup.ts` | 七个 CLI command 注册 |
+| `cli-setup.ts` | 八个 CLI command 注册（含 `ccg style`） |
 | `utils/installer.ts` | Pi assets 安装/卸载与 CCG-owned package 清理；legacy 实现仅内部历史兼容 |
 | `utils/pi-extensions.ts` | 扩展 catalog、selection reconciliation、ownership |
 | `utils/pi-runtime.ts` | Pi/package inventory 检测与安全参数数组 lifecycle 命令 |
@@ -166,7 +172,7 @@ CCG 只写 `.pi/mcp.json.example`，不覆盖、删除或输出用户 `.pi/mcp.j
 `src/utils/__tests__/` 的 Pi 主线覆盖：
 
 - CLI command/flag contract；
-- 十一阶段 init、扩展选择与 custom Pi home metadata；
+- 十二阶段 init、扩展选择与 custom Pi home metadata；
 - update 对 partial legacy metadata 的兼容、扩展选择保留、公开 `--install-dir` 与 atomic metadata/config 写入；
 - package inventory、catalog validation、安全 install/remove 参数、ownership 与失败重试；
 - doctor required/selected/skipped 分级、MCP 路径存在性与输出脱敏；

@@ -9,6 +9,8 @@ import {
   DEFAULT_PI_CAPS,
   getPiAgentHome,
 } from './pi-paths'
+import type { CcgPersonaId } from './pi-personas'
+import { normalizeCcgPersona } from './pi-personas'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -73,6 +75,8 @@ export interface PiTemplateVars {
   frontendModel?: string
   backendModel?: string
   reviewModel?: string
+  persona?: CcgPersonaId
+  personaInstructions?: string
 }
 
 /**
@@ -89,6 +93,8 @@ export function injectPiTemplateVariables(content: string, vars?: PiTemplateVars
     '{{FRONTEND_MODEL}}': vars?.frontendModel ?? '',
     '{{BACKEND_MODEL}}': vars?.backendModel ?? '',
     '{{REVIEW_MODEL}}': vars?.reviewModel ?? '',
+    '{{CCG_PERSONA}}': normalizeCcgPersona(vars?.persona),
+    '{{CCG_PERSONA_INSTRUCTIONS}}': vars?.personaInstructions ?? '',
     '{{CCG_MANAGED_BLOCK_START}}': CCG_MANAGED_BLOCK_START,
     '{{CCG_MANAGED_BLOCK_END}}': CCG_MANAGED_BLOCK_END,
   }

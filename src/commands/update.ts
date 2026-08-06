@@ -8,9 +8,11 @@ import { join } from 'pathe'
 import { init } from './init'
 import { REQUIRED_PI_EXTENSION, selectedExtensionMetadata } from '../utils/pi-extensions'
 import { checkForUpdates } from '../utils/version'
+import { normalizeCcgPersonaMetadata } from '../utils/pi-personas'
 import {
   CCG_MANAGED_BLOCK_START,
   CCG_PI_ACTIVE_AGENT_NAMES,
+  CCG_PI_MANAGED_PROMPT_NAMES,
   getCcgMetadataPath,
   getPiAgentHome,
   getProjectAgentsMdPath,
@@ -44,6 +46,7 @@ export function initOptionsFromMetadata(metadata: CcgInstallerMetadata | null): 
     frontendModel: metadata?.lastChoices?.frontendModel,
     backendModel: metadata?.lastChoices?.backendModel,
     reviewModel: metadata?.lastChoices?.reviewModel,
+    persona: normalizeCcgPersonaMetadata(metadata),
     devAgentCap: metadata?.lastChoices?.caps?.devAgentCap,
     globalConcurrencyLimit: metadata?.lastChoices?.caps?.globalConcurrencyLimit,
     maxSpawnsPerSession: metadata?.lastChoices?.caps?.maxSpawnsPerSession,
@@ -61,6 +64,7 @@ export function buildLatestInitArgs(options: InitOptions): string[] {
   add('--frontend-model', options.frontendModel)
   add('--backend-model', options.backendModel)
   add('--review-model', options.reviewModel)
+  add('--persona', options.persona)
   if (options.extensionIds && options.extensionIds.length > 0) add('--extensions', options.extensionIds.join(','))
   else args.push('--no-optional-extensions')
   if (options.preserveExtensions) args.push('--preserve-extensions')
@@ -94,11 +98,18 @@ async function verifyPiAssets(piHome: string, projectDir: string, projectAssets:
     if (!(await fs.pathExists(path))) missing.push(path)
   }
 
-  if (projectAssets) {
-    const chain = join(getProjectPiChainsDir(projectDir), 'ccg-plan.chain.md')
-    const prompt = join(getProjectPiPromptsDir(projectDir), 'ccg-go.md')
-    if (!(await fs.pathExists(chain))) missing.push(chain)
+  const chain = projectAssets
+    ? join(getProjectPiChainsDir(projectDir), 'ccg-plan.chain.md')
+    : join(piHome, 'chains', 'ccg-plan.chain.md')
+  if (!(await fs.pathExists(chain))) missing.push(chain)
+
+  const promptDir = projectAssets ? getProjectPiPromptsDir(projectDir) : join(piHome, 'prompts')
+  for (const promptFile of CCG_PI_MANAGED_PROMPT_NAMES) {
+    const prompt = join(promptDir, promptFile)
     if (!(await fs.pathExists(prompt))) missing.push(prompt)
+  }
+
+  if (projectAssets) {
     const agentsMd = getProjectAgentsMdPath(projectDir)
     const hasBlock = await fs.pathExists(agentsMd)
       && (await fs.readFile(agentsMd, 'utf-8')).includes(CCG_MANAGED_BLOCK_START)

@@ -73,6 +73,7 @@ beforeEach(async () => {
     if (message.includes('选择前端模型')) return { value: 'demo/frontend' }
     if (message.includes('选择后端模型')) return { value: 'demo/backend' }
     if (message.includes('选择审查/测试模型')) return { value: 'demo/review' }
+    if (message.includes('人格与输出风格')) return { value: 'nekomata-engineer' }
     if (message === '项目入口:') return { value: 'no' }
     if (message === '确认安装:') return { value: finalChoice === 'confirm' ? 'confirm' : '__cancel__' }
     if (question.name === 'devAgentCap') {
@@ -111,6 +112,8 @@ describe('interactive init with a custom Pi home', () => {
     const requiredChoice = extensionChoices.find(choice => choice.value === 'core-subagents')
     expect(requiredChoice).toMatchObject({ checked: true, disabled: '只读' })
     expect(await fs.pathExists(join(piHome, 'ccg-workflow.json'))).toBe(true)
+    expect((await fs.readJson(join(piHome, 'ccg-workflow.json'))).lastChoices.persona)
+      .toBe('nekomata-engineer')
   })
 
   it('keeps required runtime ownership as missing when the checkbox is deselected', async () => {

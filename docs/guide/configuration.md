@@ -11,6 +11,12 @@ scout/planner → Pi subagents.defaultModel
 
 A run may create `N` frontend and `M` backend instances from the planner's component/profile contract. Model and provider settings are merged into existing Pi files; unrelated user fields are preserved.
 
+## Leader persona and output style
+
+CCG supports nine selectable leader output styles: `default`, `engineer-professional`, `nekomata-engineer`, `laowang-engineer`, `ojousama-engineer`, `abyss-cultivator`, `abyss-concise`, `abyss-command`, and `abyss-ritual`. Interactive `ccg init` is a twelve-stage flow that presents the persona stage; non-interactive init accepts `--persona <name>`. `ccg style <name>` switches the selected style, and `ccg style default` restores the default.
+
+The selected persona is persisted in CCG metadata and preserved by `ccg update`. It changes only the leader prose emitted by `/ccg` and `/ccg-go`. Child contracts and JSON, tests, reviews, board data, credentials, and coordination behavior are unaffected. CCG does not modify user-managed `SYSTEM.md` or `APPEND_SYSTEM.md`.
+
 ## Provider and model onboarding
 
 The interactive provider stage offers an add-provider path when no usable provider/model exists. It accepts provider and model identifiers, base URL, Pi API protocol, optional capabilities, and an API-key **environment-variable name**. It never asks for or stores a real credential.
@@ -91,6 +97,11 @@ Defaults: `devAgentCap=4`, `globalConcurrencyLimit=4`, `maxSpawnsPerSession=24`,
 
 The planner produces stable `componentId` values, profiles, ownership, dependency waves, validation commands, and repair routes. Pi waits for `START`, collects `FINISH` handoffs, and routes failures for at most two repair rounds.
 
-## Credential boundaries
+## Durable board and resume boundaries
+
+Project-local task history lives under `.pi/ccg/tasks/<taskId>/` as `board.json`, `events.jsonl`, and `summary.md`. Only the leader writes these files. Board data is a bounded lifecycle projection with redacted summaries and artifact references; it must not include full transcripts, credentials, authorization headers, cookies, or user-managed MCP values.
+
+`/ccg-board` and `/ccg-replay` are read-only. `/ccg-resume` restores the leader checkpoint only, reconciles lifecycle artifacts, and starts any downstream child with `context: "fresh"`. Uninstall preserves the task history unless the user removes it separately.
+
 
 CCG may write `<project>/.pi/mcp.json.example`, but never overwrites, deletes, or prints values from user-managed `<project>/.pi/mcp.json`. Real credentials must remain in user-managed configuration or environment variables and must never enter prompts, tasks, logs, examples, fixtures, or metadata. `doctor` and `status` report only redacted state.

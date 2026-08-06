@@ -25,6 +25,8 @@ import {
 import {
   CCG_PI_ACTIVE_AGENT_NAMES,
   CCG_PI_CLEANUP_AGENT_NAMES,
+  CCG_PI_LEADER_PROMPT_NAMES,
+  CCG_PI_MANAGED_PROMPT_NAMES,
   CCG_PI_RETIRED_AGENT_NAMES,
   DEFAULT_PI_CAPS,
   getPiAgentHome,
@@ -35,6 +37,11 @@ import {
   getProjectPiSettingsPath,
 } from './pi-paths'
 import { installSkillCommands } from './skill-registry'
+import {
+  normalizeCcgPersona,
+  readPiPersonaInstructions,
+  type CcgPersonaId,
+} from './pi-personas'
 import { version as packageVersion } from '../../package.json'
 
 // ═══════════════════════════════════════════════════════
@@ -126,6 +133,7 @@ export interface PiModelOverrides {
 }
 
 export interface PiInstallOptions extends PiModelOverrides {
+  persona?: CcgPersonaId
   piHome?: string
   projectDir?: string
   installProjectAssets?: boolean
@@ -137,6 +145,7 @@ export interface PiInstallOptions extends PiModelOverrides {
 }
 
 export interface PiInstallContext extends PiModelOverrides {
+  persona: CcgPersonaId
   piHome: string
   projectDir: string
   installProjectAssets: boolean
@@ -1096,7 +1105,10 @@ function piSubagentExtensionConfigPath(ctx: PiInstallContext): string {
   return join(ctx.piHome, 'extensions', 'subagent', 'config.json')
 }
 
-function piTemplateVars(ctx: PiInstallContext): Parameters<typeof injectPiTemplateVariables>[1] {
+function piTemplateVars(
+  ctx: PiInstallContext,
+  personaInstructions = '',
+): Parameters<typeof injectPiTemplateVariables>[1] {
   return {
     piAgentHome: ctx.piHome,
     piProjectDir: '.pi',
@@ -1107,6 +1119,8 @@ function piTemplateVars(ctx: PiInstallContext): Parameters<typeof injectPiTempla
     frontendModel: ctx.frontendModel,
     backendModel: ctx.backendModel,
     reviewModel: ctx.reviewModel,
+    persona: ctx.persona,
+    personaInstructions,
   }
 }
 
@@ -1143,8 +1157,12 @@ function assertPiContentIsClean(ctx: PiInstallContext, filePath: string, content
   return true
 }
 
-function renderPiTemplateContent(ctx: PiInstallContext, raw: string): string {
-  let content = injectPiTemplateVariables(raw, piTemplateVars(ctx))
+function renderPiTemplateContent(
+  ctx: PiInstallContext,
+  raw: string,
+  personaInstructions = '',
+): string {
+  let content = injectPiTemplateVariables(raw, piTemplateVars(ctx, personaInstructions))
   content = replacePiHomePathsInTemplate(content)
 
   // replacePiHomePathsInTemplate() resolves literal ~/.pi/agent with the real home.
@@ -1157,7 +1175,12 @@ function renderPiTemplateContent(ctx: PiInstallContext, raw: string): string {
   return content
 }
 
-async function readRenderedPiTemplate(ctx: PiInstallContext, srcFile: string, destFile: string): Promise<string | null> {
+async function readRenderedPiTemplate(
+  ctx: PiInstallContext,
+  srcFile: string,
+  destFile: string,
+  personaInstructions = '',
+): Promise<string | null> {
   if (!(await fs.pathExists(srcFile))) {
     recordPiError(ctx, `Pi template source file not found: ${srcFile}`)
     return null
@@ -1165,7 +1188,7 @@ async function readRenderedPiTemplate(ctx: PiInstallContext, srcFile: string, de
 
   try {
     const raw = await fs.readFile(srcFile, 'utf-8')
-    const content = renderPiTemplateContent(ctx, raw)
+    const content = renderPiTemplateContent(ctx, raw, personaInstructions)
     if (!assertPiContentIsClean(ctx, destFile, content)) {
       return null
     }
@@ -1189,9 +1212,10 @@ async function writeRenderedPiTemplate(
     resultKey?: 'installedPiAgents' | 'installedPiChains' | 'installedPiPrompts'
     projectFile?: boolean
     force?: boolean
+    personaInstructions?: string
   } = {},
 ): Promise<PiTemplateWriteResult> {
-  const content = await readRenderedPiTemplate(ctx, srcFile, destFile)
+  const content = await readRenderedPiTemplate(ctx, srcFile, destFile, options.personaInstructions)
   if (content === null) return 'failed'
 
   const shouldOverwrite = options.force ?? ctx.force
@@ -1286,17 +1310,106 @@ export async function installPiChain(ctx: PiInstallContext): Promise<void> {
   })
 }
 
-/** Copy ccg-go.md to project .pi/prompts/ or user-level piHome/prompts/. */
+/** Copy all managed CCG prompt commands to project .pi/prompts/ or user-level piHome/prompts/. */
 export async function installPiPromptWorkflow(ctx: PiInstallContext): Promise<void> {
-  const srcFile = join(ctx.templateDir, 'prompts', 'ccg-go.md')
   const destDir = ctx.installProjectAssets ? getProjectPiPromptsDir(ctx.projectDir) : piPromptsDir(ctx)
-  const destFile = join(destDir, 'ccg-go.md')
+  let personaInstructions: string
+  try {
+    personaInstructions = await readPiPersonaInstructions(ctx.templateDir, ctx.persona)
+  }
+  catch (error) {
+    recordPiError(ctx, String(error))
+    return
+  }
 
-  await writeRenderedPiTemplate(ctx, srcFile, destFile, {
-    installName: 'ccg-go',
-    resultKey: 'installedPiPrompts',
-    projectFile: ctx.installProjectAssets,
-  })
+  for (const promptFile of CCG_PI_MANAGED_PROMPT_NAMES) {
+    const promptName = promptFile.replace(/\.md$/, '')
+    await writeRenderedPiTemplate(
+      ctx,
+      join(ctx.templateDir, 'prompts', promptFile),
+      join(destDir, promptFile),
+      {
+        installName: promptName,
+        resultKey: 'installedPiPrompts',
+        projectFile: ctx.installProjectAssets,
+        personaInstructions: CCG_PI_LEADER_PROMPT_NAMES.includes(promptFile as typeof CCG_PI_LEADER_PROMPT_NAMES[number])
+          ? personaInstructions
+          : '',
+      },
+    )
+  }
+}
+
+export interface PiLeaderPersonaRenderOptions {
+  persona: CcgPersonaId
+  piHome?: string
+  projectDir?: string
+  installProjectAssets?: boolean
+  caps?: Partial<PiCapsConfig>
+  frontendModel?: string
+  backendModel?: string
+  reviewModel?: string
+  templateDir?: string
+}
+
+/** Re-render only the two CCG-owned leader prompts for `ccg style`. */
+export async function renderPiLeaderPersonaPrompts(options: PiLeaderPersonaRenderOptions): Promise<InstallResult> {
+  const piHome = options.piHome ?? getPiAgentHome()
+  const projectDir = options.projectDir ?? process.cwd()
+  const managedFiles: ManagedFileEntry[] = []
+  const result: InstallResult = {
+    success: true,
+    installedCommands: [],
+    installedPrompts: [],
+    installedPiAgents: [],
+    installedPiChains: [],
+    installedPiPrompts: [],
+    installedProjectFiles: [],
+    managedFiles,
+    errors: [],
+    configPath: join(piHome, 'settings.json'),
+    piHome,
+    projectDir,
+  }
+  const ctx: PiInstallContext = {
+    persona: normalizeCcgPersona(options.persona),
+    piHome,
+    projectDir,
+    installProjectAssets: options.installProjectAssets ?? true,
+    caps: normalizePiCaps(options.caps),
+    templateDir: options.templateDir ?? join(PACKAGE_ROOT, 'templates', 'pi'),
+    force: true,
+    frontendModel: options.frontendModel,
+    backendModel: options.backendModel,
+    reviewModel: options.reviewModel,
+    managedFiles,
+    result,
+  }
+  const destDir = ctx.installProjectAssets ? getProjectPiPromptsDir(projectDir) : piPromptsDir(ctx)
+  let personaInstructions: string
+  try {
+    personaInstructions = await readPiPersonaInstructions(ctx.templateDir, ctx.persona)
+  }
+  catch (error) {
+    recordPiError(ctx, String(error))
+    return result
+  }
+
+  for (const promptFile of CCG_PI_LEADER_PROMPT_NAMES) {
+    await writeRenderedPiTemplate(
+      ctx,
+      join(ctx.templateDir, 'prompts', promptFile),
+      join(destDir, promptFile),
+      {
+        installName: promptFile.replace(/\.md$/, ''),
+        resultKey: 'installedPiPrompts',
+        projectFile: ctx.installProjectAssets,
+        force: true,
+        personaInstructions,
+      },
+    )
+  }
+  return result
 }
 
 /** Upsert the CCG managed block into project AGENTS.md. */
@@ -1507,6 +1620,7 @@ export async function installPiWorkflow(options: PiInstallOptions = {}): Promise
     frontendModel: options.frontendModel,
     backendModel: options.backendModel,
     reviewModel: options.reviewModel,
+    persona: normalizeCcgPersona(options.persona),
     managedFiles,
     result,
   }
@@ -1798,9 +1912,11 @@ export async function uninstallPiWorkflow(options: PiUninstallOptions = {}): Pro
     await removeFileIfPresent(join(piHome, 'agents', `${agent}.md`), result)
   }
   await removeFileIfPresent(join(piHome, 'chains', 'ccg-plan.chain.md'), result)
-  await removeFileIfPresent(join(piHome, 'prompts', 'ccg-go.md'), result)
   await removeFileIfPresent(join(getProjectPiChainsDir(projectDir), 'ccg-plan.chain.md'), result)
-  await removeFileIfPresent(join(getProjectPiPromptsDir(projectDir), 'ccg-go.md'), result)
+  for (const promptFile of CCG_PI_MANAGED_PROMPT_NAMES) {
+    await removeFileIfPresent(join(piHome, 'prompts', promptFile), result)
+    await removeFileIfPresent(join(getProjectPiPromptsDir(projectDir), promptFile), result)
+  }
   await removeFileIfPresent(getProjectMcpExamplePath(projectDir), result)
 
   const manifestCreated = new Set(

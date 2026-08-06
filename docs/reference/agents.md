@@ -11,7 +11,9 @@ CCG installs six fixed Pi role templates and may instantiate multiple generic bu
 | `ccg-test-runner` | Test, typecheck, lint, build | Stateless |
 | `ccg-reviewer` | Correctness, quality, security review | Stateless |
 
-All children use fresh context. Pi inlines plans, ownership, prior-wave handoffs, and verification results. Static instructions remain stable and runtime data is appended later to reduce prompt-prefix churn.
+All children use fresh context. Pi inlines only the role-specific plan slice, ownership, relevant prior-wave handoffs, contracts, and verification evidence. Static instructions remain stable and runtime data is appended later to reduce prompt-prefix churn. Old child conversations are never reused by resume.
+
+Only the leader assigns agents, migrates `intake → planning → building → testing → reviewing → repairing → completed|blocked`, and writes `.pi/ccg/tasks/<taskId>/`. Scout/planner are read-only, builders implement only approved ownership, test-runner only runs non-writing validation, and reviewer only reports findings. No child writes the board.
 
 ## Dynamic builders and coordination
 
@@ -21,9 +23,10 @@ The planner assigns a stable `componentId` and one owning builder to each compon
 2. Pi waits for supervisor `START` before builder writes.
 3. Builders receive owned/forbidden files, dependencies, contracts, and validation requirements.
 4. Builders escalate cross-component changes.
-5. Builders return `FINISH` handoffs.
-6. Test and review failures use `componentId` for targeted repair.
-7. Repair is limited to two rounds.
+5. Builders return `FINISH` only to the leader; they never start test/review or contact siblings directly.
+6. The leader starts fresh test-runner and reviewer instances; both remain read-only for product code.
+7. Test and review failures return to the leader and use `componentId` for targeted repair.
+8. Repair is limited to two rounds.
 
 ## Optional extension behavior
 

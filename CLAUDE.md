@@ -77,11 +77,25 @@ maxSubagentDepth = 1
 - test-runner/reviewer 的失败必须携带 `componentId`，供 Pi 定向回派 owning builder。
 - componentId 定向修复最多两轮。
 
-## CLI
+## Pi slash commands 与 durable board
+
+安装后的 Pi prompt command family：
+
+```text
+/ccg         主入口：确认需求后由 leader 自主 plan/build/test/review/repair
+/ccg-board   只读看板
+/ccg-replay  只读复盘
+/ccg-resume  从 durable leader checkpoint 恢复，child 仍 fresh
+/ccg-go      兼容入口
+```
+
+leader 是唯一 agent 指派者、状态迁移者和 `.pi/ccg/` 写入者。任务投影位于 `.pi/ccg/tasks/<taskId>/board.json`、`events.jsonl`、`summary.md`，schema 为 `ccg.taskBoard.v1` / `ccg.taskEvent.v1`。看板是 `pi-subagents` lifecycle/FleetView 的有界脱敏投影，不是第二执行引擎；uninstall 默认保留复盘历史。builder FINISH 只交 leader，leader 再启动 fresh test-runner/reviewer；test/reviewer 不修改产品代码。
+
 
 ```text
 ccg
 ccg init | ccg i
+ccg style <name>                 # 切换 leader 输出风格；default 恢复默认
 ccg update [--install-dir <path>]
 ccg extensions [--install-dir <path>]
 ccg doctor [--install-dir <path>] [--project-dir <path>]   # 检查 Pi CLI、必需 runtime、agents、caps、模型、扩展与 MCP 配置存在性
@@ -89,12 +103,16 @@ ccg status [--install-dir <path>] [--project-dir <path>]
 ccg uninstall
 ```
 
-`init` 是十一阶段状态机：
+`init` 是十二阶段状态机；其中 persona 阶段选择 leader 的输出风格：
 
 ```text
 language → environment → extensions → scope → provider → frontend
-→ backend → review → limits → entry → summary
+→ backend → review → limits → persona → entry → summary
 ```
+
+可选 persona 为 `default`、`engineer-professional`、`nekomata-engineer`、`laowang-engineer`、`ojousama-engineer`，以及四种 abyss 风格：`abyss-cultivator`、`abyss-concise`、`abyss-command`、`abyss-ritual`。persona 只影响 `/ccg` 与 `/ccg-go` leader 的 prose；child contract、JSON、测试、审查、board、凭据与协调协议不变。用户自管的 `SYSTEM.md` / `APPEND_SYSTEM.md` 不被修改。
+
+交互式 `ccg init` 在 persona 阶段选择风格；非交互式安装使用 `--persona <name>`。`ccg style <name>` 可切换已安装风格，`ccg style default` 恢复默认风格。当前选择写入 CCG metadata，`ccg update` 保留该选择；style 操作不改变 package lifecycle。
 
 ## 入口与模块
 
@@ -103,7 +121,7 @@ language → environment → extensions → scope → provider → frontend
 | `bin/ccg.mjs` | npm executable |
 | `src/cli.ts` | CAC CLI 入口 |
 | `src/cli-setup.ts` | Pi-only command 注册 |
-| `src/commands/init.ts` | 十一阶段安装向导与扩展选择 |
+| `src/commands/init.ts` | 十二阶段安装向导与扩展选择 |
 | `src/commands/extensions.ts` | 扩展 catalog 状态、确认与 package lifecycle |
 | `src/commands/update.ts` | metadata 驱动更新；不执行第三方 package 操作 |
 | `src/commands/doctor.ts` | doctor/status |

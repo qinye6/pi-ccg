@@ -8,14 +8,26 @@ npx --package pi-ccg ccg --help
 | Command | Purpose |
 |---|---|
 | `ccg` | Open the Pi-only workflow menu |
-| `ccg init` / `ccg i` | Run the eleven-stage installation flow |
+| `ccg init` / `ccg i` | Run the twelve-stage installation flow |
+| `ccg style <name>` | Switch the persisted leader output style; use `default` to restore the default |
 | `ccg update [--install-dir <path>]` | Reinstall managed assets without changing third-party packages |
 | `ccg extensions [--install-dir <path>]` | Inspect and explicitly manage curated Pi extensions |
 | `ccg doctor [--install-dir <path>] [--project-dir <path>]` | Check runtime, agents, models, caps, extensions, and MCP configuration presence |
 | `ccg status [--install-dir <path>] [--project-dir <path>]` | Display readiness and extension ownership summary |
 | `ccg uninstall` | Remove managed assets and CCG-owned packages only |
 
-## Common init options
+## Pi slash commands installed by CCG
+
+| Pi command | Purpose |
+|---|---|
+| `/ccg <request>` | Main leader entry for plan → build → test → review → repair |
+| `/ccg-board [taskId]` | Read-only task/component progress board |
+| `/ccg-replay [taskId]` | Read-only event timeline and retrospective |
+| `/ccg-resume <taskId>` | Validate and resume a durable leader checkpoint with fresh children |
+| `/ccg-go <request>` | Compatibility entry equivalent to `/ccg` |
+
+These are Pi prompt commands installed in the selected user or project prompt directory; they are distinct from the `ccg` npm CLI commands below. `doctor`/`status` report command readiness and the board root without reading task contents. Uninstall removes only the five managed prompts and preserves user prompts and `.pi/ccg/tasks/`.
+
 
 | Option | Purpose |
 |---|---|
@@ -28,6 +40,7 @@ npx --package pi-ccg ccg --help
 | `--backend-model <id>` | Model for dynamic backend builders |
 | `--review-model <id>` | Model for reviewer and test-runner |
 | `--provider-file <path>` | Import non-secret provider definitions |
+| `--persona <name>` | Select the leader output style during `init` |
 | `--dev-agent-cap <n>` | Maximum builder count |
 | `--global-concurrency-limit <n>` | Global concurrent subagent limit |
 | `--max-spawns-per-session <n>` | Session spawn budget |
@@ -38,6 +51,8 @@ npx --package pi-ccg ccg --help
 `--install-dir` is also supported by `update`, `extensions`, `doctor`, `status`, and `uninstall`; `doctor` and `status` additionally accept `--project-dir` when validating project-level assets outside the current directory.
 
 `--preserve-extensions` is an internal update handoff flag that preserves extension metadata and prevents package reconciliation.
+
+The accepted persona names are `default`, `engineer-professional`, `nekomata-engineer`, `laowang-engineer`, `ojousama-engineer`, `abyss-cultivator`, `abyss-concise`, `abyss-command`, and `abyss-ritual`. The choice is persisted in CCG metadata and preserved by update. It affects only `/ccg` and `/ccg-go` leader prose; child contracts/JSON, tests, reviews, board, credentials, and user `SYSTEM.md` / `APPEND_SYSTEM.md` are outside the style boundary.
 
 ## Extension IDs
 

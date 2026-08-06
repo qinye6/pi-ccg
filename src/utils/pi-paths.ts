@@ -23,6 +23,18 @@ export const CCG_PI_CLEANUP_AGENT_NAMES = [
   ...CCG_PI_RETIRED_AGENT_NAMES,
 ] as const
 
+/** Managed Pi prompt filenames. Keep this allowlist shared by install, doctor, and uninstall. */
+export const CCG_PI_MANAGED_PROMPT_NAMES = [
+  'ccg.md',
+  'ccg-board.md',
+  'ccg-replay.md',
+  'ccg-resume.md',
+  'ccg-go.md',
+] as const
+
+/** Only these managed prompts receive leader persona instructions. */
+export const CCG_PI_LEADER_PROMPT_NAMES = ['ccg.md', 'ccg-go.md'] as const
+
 export const CCG_PI_MODEL_AGENTS = {
   frontendModel: ['ccg-frontend-builder'],
   backendModel: ['ccg-backend-builder'],
@@ -93,6 +105,11 @@ export function getProjectPiChainsDir(cwd: string): string {
 
 export function getProjectPiPromptsDir(cwd: string): string {
   return join(getProjectPiDir(cwd), 'prompts')
+}
+
+/** Project-scoped durable CCG task board root. */
+export function getProjectPiCcgTasksDir(cwd: string): string {
+  return join(getProjectPiDir(cwd), 'ccg', 'tasks')
 }
 
 /** nocturne_memory 等 MCP 服务样例配置落点（plan §8.2，用户手工改路径后合并生效） */

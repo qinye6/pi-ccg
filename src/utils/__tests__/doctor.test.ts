@@ -18,6 +18,8 @@ const spawnSync = vi.hoisted(() => vi.fn())
 
 vi.mock('node:child_process', () => ({ spawnSync }))
 
+import { CCG_PI_MANAGED_PROMPT_NAMES } from '../pi-paths'
+
 const { doctor, status } = await import('../../commands/doctor')
 
 const ACTIVE_AGENTS = [
@@ -240,12 +242,86 @@ describe('doctor retired Pi agent handling', () => {
     expect(output).not.toContain('$CUSTOM_API_KEY')
   })
 
+  it('reports only the board root path without reading task contents', async () => {
+    const boardRoot = join(projectDir, '.pi', 'ccg', 'tasks')
+    await fs.ensureDir(join(boardRoot, 'task-secret'))
+    await fs.writeJson(join(boardRoot, 'task-secret', 'board.json'), {
+      schema: 'ccg.taskBoard.v1',
+      goal: 'do-not-print-board-secret',
+    })
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await doctor()
+    await status()
+
+    const output = log.mock.calls.map(args => args.join(' ')).join('\n')
+    expect(output).toContain(boardRoot)
+    expect(output).not.toContain('do-not-print-board-secret')
+  })
+
+  it('reports only validated persona IDs and falls back safely for corrupted metadata', async () => {
+    const piHome = join(mockHome.path, '.pi', 'agent')
+    const metadataPath = join(piHome, 'ccg-workflow.json')
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await fs.writeJson(metadataPath, {
+      version: '3.2.7',
+      language: 'en',
+      scope: 'user',
+      lastChoices: {
+        persona: 'nekomata-engineer',
+        caps: {
+          devAgentCap: 4,
+          globalConcurrencyLimit: 4,
+          maxSpawnsPerSession: 24,
+          maxSubagentDepth: 1,
+        },
+      },
+      extensions: [],
+      managedFiles: [],
+    })
+    await doctor()
+    await status()
+
+    let output = log.mock.calls.map(args => args.join(' ')).join('\n')
+    expect(output).toContain('CCG leader persona')
+    expect(output).toContain('Persona:      nekomata-engineer')
+    expect(output).not.toContain('warm, lightly playful catlike tone')
+
+    log.mockClear()
+    await fs.writeJson(metadataPath, {
+      version: '3.2.7',
+      language: 'en',
+      scope: 'user',
+      lastChoices: {
+        persona: '../private-persona-body',
+        caps: {
+          devAgentCap: 4,
+          globalConcurrencyLimit: 4,
+          maxSpawnsPerSession: 24,
+          maxSubagentDepth: 1,
+        },
+      },
+      extensions: [],
+      managedFiles: [],
+    })
+    await doctor()
+    await status()
+
+    output = log.mock.calls.map(args => args.join(' ')).join('\n')
+    expect(output).toContain('invalid saved persona; runtime fallback=default')
+    expect(output).toContain('Persona:      default')
+    expect(output).not.toContain('../private-persona-body')
+  })
+
   it('uses user-level chain and prompt paths for user-only metadata', async () => {
     const piHome = join(mockHome.path, '.pi', 'agent')
     await fs.ensureDir(join(piHome, 'chains'))
     await fs.ensureDir(join(piHome, 'prompts'))
     await fs.writeFile(join(piHome, 'chains', 'ccg-plan.chain.md'), 'chain\n', 'utf-8')
-    await fs.writeFile(join(piHome, 'prompts', 'ccg-go.md'), 'prompt\n', 'utf-8')
+    for (const promptFile of CCG_PI_MANAGED_PROMPT_NAMES) {
+      await fs.writeFile(join(piHome, 'prompts', promptFile), 'prompt\n', 'utf-8')
+    }
     await fs.writeJson(join(piHome, 'ccg-workflow.json'), {
       version: '1.0.1',
       scope: 'user',
@@ -256,7 +332,7 @@ describe('doctor retired Pi agent handling', () => {
 
     const output = log.mock.calls.map(args => args.join(' ')).join('\n')
     expect(output).toContain(join(piHome, 'chains', 'ccg-plan.chain.md'))
-    expect(output).toContain(join(piHome, 'prompts', 'ccg-go.md'))
+    expect(output).toContain('5/5 installed: /ccg, /ccg-board, /ccg-replay, /ccg-resume, /ccg-go')
     expect(output).toContain('not required for user-only install scope')
     expect(output).not.toContain('not installed in current project')
   })

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'fs-extra'
 import { join } from 'pathe'
 import { uninstallPiWorkflow } from '../installer'
-import { CCG_MANAGED_BLOCK_END, CCG_MANAGED_BLOCK_START } from '../pi-paths'
+import { CCG_MANAGED_BLOCK_END, CCG_MANAGED_BLOCK_START, CCG_PI_MANAGED_PROMPT_NAMES } from '../pi-paths'
 
 const mockHome = vi.hoisted(() => ({
   path: `/tmp/ccg-pi-uninstall-home-${process.pid}`,
@@ -63,7 +63,13 @@ describe('uninstallPiWorkflow', () => {
     await fs.writeFile(join(piHome, 'agents', 'ccg-miniprogram-builder.md'), 'retired managed')
     await fs.writeFile(join(piHome, 'agents', 'user-agent.md'), 'user')
     await fs.writeFile(join(projectDir, '.pi', 'chains', 'ccg-plan.chain.md'), 'managed')
-    await fs.writeFile(join(projectDir, '.pi', 'prompts', 'ccg-go.md'), 'managed')
+    for (const promptFile of CCG_PI_MANAGED_PROMPT_NAMES) {
+      await fs.writeFile(join(projectDir, '.pi', 'prompts', promptFile), 'managed')
+    }
+    await fs.writeFile(join(projectDir, '.pi', 'prompts', 'user-prompt.md'), 'user')
+    const boardPath = join(projectDir, '.pi', 'ccg', 'tasks', 'task-1', 'board.json')
+    await fs.ensureDir(join(boardPath, '..'))
+    await fs.writeJson(boardPath, { schema: 'ccg.taskBoard.v1', state: 'completed' })
     await fs.writeFile(join(projectDir, '.pi', 'mcp.json.example'), '{"example":true}')
     await fs.writeFile(join(projectDir, '.pi', 'mcp.json'), '{"token":"[密钥]"}')
     await fs.writeJson(projectSettings, { ccg: { enabled: true } })
@@ -125,7 +131,11 @@ describe('uninstallPiWorkflow', () => {
     expect(await fs.pathExists(join(piHome, 'agents', 'ccg-backend-builder.md'))).toBe(false)
     expect(await fs.pathExists(join(piHome, 'agents', 'ccg-miniprogram-builder.md'))).toBe(false)
     expect(await fs.pathExists(join(piHome, 'agents', 'user-agent.md'))).toBe(true)
-    expect(await fs.pathExists(projectSettings)).toBe(false)
+    for (const promptFile of CCG_PI_MANAGED_PROMPT_NAMES) {
+      expect(await fs.pathExists(join(projectDir, '.pi', 'prompts', promptFile))).toBe(false)
+    }
+    expect(await fs.pathExists(join(projectDir, '.pi', 'prompts', 'user-prompt.md'))).toBe(true)
+    expect(await fs.readJson(boardPath)).toEqual({ schema: 'ccg.taskBoard.v1', state: 'completed' })
     expect(await fs.readJson(join(projectDir, '.pi', 'mcp.json'))).toEqual({ token: '[密钥]' })
     expect(await fs.readJson(join(piHome, 'models.json'))).toEqual({
       providers: { private: { apiKey: '[密钥]', models: [] } },

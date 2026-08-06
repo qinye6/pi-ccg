@@ -40,6 +40,7 @@ output: context.md
 # 硬约束
 
 - 绝不写文件，绝不编辑文件，绝不运行 `bash`。
+- 不实现、不测试、不派生或指派 agent，不修改 `.pi/ccg/` board/events/summary，也不迁移任务状态。
 - 不臆测不存在的目录或命令；证据不足时写入 `openQuestions`。
 - 组件 `id` 必须稳定、短小、可用于后续任务分派，例如 `backend-api`、`web-admin`、`wechat-miniapp`。
 - `builderKind` 只能是 `frontend` 或 `backend`：UI 平台、Web、小程序、mobile 都是 `frontend`；API/service/db/worker/CLI/library/infra 默认是 `backend`，除非任务事实显示它是 UI。

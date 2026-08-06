@@ -13,7 +13,7 @@ describe('Pi CLI command registration', () => {
     const cli = await configuredCli()
     const names = cli.commands.map(command => command.name)
 
-    expect(names).toEqual(['', 'init', 'update', 'extensions', 'doctor', 'status', 'uninstall'])
+    expect(names).toEqual(['', 'init', 'style', 'update', 'extensions', 'doctor', 'status', 'uninstall'])
     expect(names).not.toContain('config mcp')
     expect(names).not.toContain('diagnose-mcp')
     expect(names).not.toContain('fix-mcp')
@@ -32,6 +32,8 @@ describe('Pi CLI command registration', () => {
       'demo/backend',
       '--review-model',
       'demo/review',
+      '--persona',
+      'nekomata-engineer',
       '--dev-agent-cap',
       '3',
       '--global-concurrency-limit',
@@ -48,6 +50,7 @@ describe('Pi CLI command registration', () => {
       frontendModel: 'demo/frontend',
       backendModel: 'demo/backend',
       reviewModel: 'demo/review',
+      persona: 'nekomata-engineer',
       devAgentCap: 3,
       globalConcurrencyLimit: 4,
       maxSpawnsPerSession: 20,
@@ -78,6 +81,22 @@ describe('Pi CLI command registration', () => {
     cli.parse(['node', 'ccg', 'init', '--no-optional-extensions'], { run: false })
 
     expect(cli.options.optionalExtensions).toBe(false)
+  })
+
+  it.each([
+    ['style', 'nekomata-engineer'],
+    ['style --persona', 'abyss-command'],
+  ])('parses the %s persona form', async (form, persona) => {
+    const cli = await configuredCli()
+    const args = form === 'style'
+      ? ['node', 'ccg', 'style', persona]
+      : ['node', 'ccg', 'style', '--persona', persona]
+
+    cli.parse(args, { run: false })
+
+    expect(cli.matchedCommand?.name).toBe('style')
+    if (form === 'style') expect(cli.args).toEqual([persona])
+    else expect(cli.options.persona).toBe(persona)
   })
 
   it('parses a custom Pi home for update', async () => {

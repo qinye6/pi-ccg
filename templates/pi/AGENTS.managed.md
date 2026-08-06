@@ -10,7 +10,15 @@
 4. 每个 builder 在写代码前必须通过 `ccg.builderStart.v2` 请求批准；未批准不得 edit/write。
 5. scope/shared file/contract 变化必须阻塞式联系 supervisor；supervisor 向受影响的运行中 builder 定向 relay。
 6. builder 返回前发送 `ccg.builderFinish.v2`，并输出 `ccg.builderResult.v2`。
-7. 所有开发 waves 完成后自动运行 test-runner 与 reviewer；失败或 Critical 最多 2 轮按 componentId 定向修复。
+7. 所有开发 waves 完成后，由 supervisor 先校验 builder FINISH，再以 fresh context 运行 test-runner 与 reviewer；失败或 Critical 最多 2 轮按 componentId 定向修复。
+
+## Leader 状态机、看板与 A2A
+
+- supervisor 是唯一允许指派 agent、迁移任务状态和写 `.pi/ccg/` 的 leader。主阶段固定为 `intake → planning → building → testing → reviewing → repairing → completed|blocked`。
+- 每个任务使用 `.pi/ccg/tasks/<taskId>/board.json`、`events.jsonl`、`summary.md` 保存 `ccg.taskBoard.v1` / `ccg.taskEvent.v1` 有界投影；实时事实仍以 `pi-subagents` lifecycle/FleetView 为准。
+- child 不得修改 board/events/summary。builder FINISH 只能交给 leader；leader 校验后再启动 fresh test-runner/reviewer。test/review 失败先返回 leader，再由 leader 路由 owning builder。
+- `/ccg-board` 与 `/ccg-replay` 只读；`/ccg-resume` 只恢复 leader checkpoint，后续 child 仍使用 `context: "fresh"`，不得复用旧 child conversation。
+- board、event 和 summary 只保存有限摘要与 lifecycle references，不复制完整 transcript/stdout，不记录任何真实凭据或用户 MCP 配置值。
 
 ## 上限
 

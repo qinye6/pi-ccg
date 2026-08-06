@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import fs from 'fs-extra'
 import { join } from 'pathe'
 import { init } from '../../commands/init'
-import { buildLatestInitArgs, performUpdate } from '../../commands/update'
+import { buildLatestInitArgs, initOptionsFromMetadata, performUpdate } from '../../commands/update'
+import { createDefaultMetadata } from '../config'
 
 const CCG_AGENTS = [
   'ccg-project-scout',
@@ -45,6 +46,7 @@ describe('Pi init and update operations', () => {
       frontendModel: 'demo/frontend',
       backendModel: 'demo/backend',
       reviewModel: 'demo/review',
+      persona: 'nekomata-engineer',
     })
 
     const metadataPath = join(piHome, 'ccg-workflow.json')
@@ -58,11 +60,23 @@ describe('Pi init and update operations', () => {
       frontendModel: 'demo/frontend',
       backendModel: 'demo/backend',
       reviewModel: 'demo/review',
+      persona: 'nekomata-engineer',
     })
     for (const agent of CCG_AGENTS) {
       expect(await fs.pathExists(join(piHome, 'agents', `${agent}.md`))).toBe(true)
     }
     expect(await fs.pathExists(join(piHome, 'agents', `${RETIRED_MINIPROGRAM_AGENT}.md`))).toBe(false)
+  })
+
+  it('rejects unknown personas during non-interactive init', async () => {
+    const { piHome, projectDir } = await createSandbox('invalid-persona')
+    process.chdir(projectDir)
+
+    await expect(init({
+      installDir: piHome,
+      skipPrompt: true,
+      persona: '../escape' as never,
+    })).rejects.toThrow('Unknown Pi persona: ../escape')
   })
 
   it('restores metadata choices and preserves unrelated Pi configuration during update', async () => {
@@ -186,7 +200,22 @@ describe('Pi init and update operations', () => {
     })
   })
 
-  it('passes a custom Pi home to the latest package installer', () => {
+  it('preserves validated personas and falls back for legacy or corrupted metadata', () => {
+    const selected = createDefaultMetadata({
+      language: 'en',
+      lastChoices: { persona: 'abyss-command' },
+    })
+    expect(initOptionsFromMetadata(selected).persona).toBe('abyss-command')
+
+    const legacy = createDefaultMetadata({ language: 'en' })
+    expect(initOptionsFromMetadata(legacy).persona).toBe('default')
+
+    const corrupted = structuredClone(selected)
+    ;(corrupted.lastChoices as { persona?: string }).persona = '../escape'
+    expect(initOptionsFromMetadata(corrupted).persona).toBe('default')
+  })
+
+  it('passes a custom Pi home and persona to the latest package installer', () => {
     const args = buildLatestInitArgs({
       lang: 'en',
       installDir: '/tmp/custom pi home',
@@ -196,6 +225,7 @@ describe('Pi init and update operations', () => {
       frontendModel: 'demo/frontend',
       backendModel: 'demo/backend',
       reviewModel: 'demo/review',
+      persona: 'ojousama-engineer',
       extensionIds: ['mcp-adapter', 'memory-context'],
       preserveExtensions: true,
       devAgentCap: 3,
@@ -208,6 +238,8 @@ describe('Pi init and update operations', () => {
     expect(args.slice(args.indexOf('--install-dir'), args.indexOf('--install-dir') + 2))
       .toEqual(['--install-dir', '/tmp/custom pi home'])
     expect(args).toContain('--no-project-assets')
+    expect(args.slice(args.indexOf('--persona'), args.indexOf('--persona') + 2))
+      .toEqual(['--persona', 'ojousama-engineer'])
     expect(args.slice(args.indexOf('--extensions'), args.indexOf('--extensions') + 2))
       .toEqual(['--extensions', 'mcp-adapter,memory-context'])
     expect(args).toContain('--preserve-extensions')
