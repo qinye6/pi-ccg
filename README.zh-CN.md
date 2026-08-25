@@ -9,7 +9,7 @@ CCG 将 Pi CLI 改造成一个有边界的多智能体开发 supervisor。Pi 是
 
 [English](./README.md)
 
-> 当前包版本：`3.2.7` · Node.js `>=20`
+> 当前包版本：`3.2.8` · Node.js `>=20`
 
 ## 工作流程
 
@@ -97,7 +97,7 @@ maxSubagentDepth = 1
 - Node.js `>=20`
 - Pi CLI
 
-运行十二阶段交互安装器：
+运行十三阶段交互安装器：
 
 ```bash
 npx pi-ccg init
@@ -137,6 +137,10 @@ npx pi-ccg init \
   --frontend-model provider/frontend-model \
   --backend-model provider/backend-model \
   --review-model provider/review-model \
+  --planning-thinking medium \
+  --frontend-thinking low \
+  --backend-thinking high \
+  --review-thinking high \
   --dev-agent-cap 4 \
   --global-concurrency-limit 4 \
   --max-spawns-per-session 24 \
@@ -157,6 +161,8 @@ fresh non-interactive install 不会静默安装 optional packages；只有 `--e
 - Backend model → 通用 `ccg-backend-builder` 实例
 - Review model → `ccg-reviewer`、`ccg-test-runner`
 - scout/planner 默认继承 Pi 的 `subagents.defaultModel`
+
+thinking 强度独立通过 `--planning-thinking`、`--frontend-thinking`、`--backend-thinking`、`--review-thinking` 配置，合法值为 `off`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`。四组分别映射 scout/planner、frontend builder、backend builder、reviewer/test-runner。省略参数表示继承 Pi/模型默认，不写 `thinking`。显式选择会保存到 CCG metadata，供 update 恢复，并安全合并到 `settings.json -> subagents.agentOverrides`，不会覆盖无关用户字段。exact known model 会按 `reasoning` / `thinkingLevelMap` 校验；未知模型不猜测，由 doctor 输出 capability warning。
 
 `--provider-file <path>` 只能用于不含真实凭据的 provider 定义。交互向导可直接创建 custom provider/model，但 API key 只接受环境变量引用，绝不要求或存储真实 key。CCG 仅对 exact、已核验 model ID 自动填充 `contextWindow` 与 `maxTokens`；未知模型必须由用户明确填写，绝不猜测。`models.json` 按 missing/valid/invalid 三态检查；invalid JSON 不覆盖；按 exact provider/model ID 合并，并保留 pricing、nested compat、sibling models 与未知用户字段。
 
@@ -190,6 +196,10 @@ ccg uninstall    仅移除受管资产和 CCG-owned packages
 --frontend-model <provider/model>
 --backend-model <provider/model>
 --review-model <provider/model>
+--planning-thinking <level>
+--frontend-thinking <level>
+--backend-thinking <level>
+--review-thinking <level>
 --provider-file <path>
 --persona <name>
 --dev-agent-cap <number>
@@ -241,7 +251,7 @@ CCG 只修改 `AGENTS.md` 中以下 marker 之间的受管块：
 
 ## Pi slash 命令与任务看板
 
-安装后，Pi 可直接发现 `/ccg` 主入口。`/ccg-board` 查看当前或指定任务，`/ccg-replay` 只读生成时间线复盘，`/ccg-resume` 校验 durable checkpoint 后继续，`/ccg-go` 保留为兼容入口。
+安装后，Pi 可直接发现 `/ccg` 主入口。`/ccg-board` 查看当前或指定任务，`/ccg-replay` 只读生成时间线复盘，`/ccg-resume` 校验 durable checkpoint 后继续，`/ccg-go` 保留为兼容入口。`/ccg:go` 属于 Claude harness，不是 Pi prompt command。若 Pi 的 `/` 菜单没有这些命令：fresh install 运行 `ccg init`；已有 metadata 但资产缺失运行 `ccg update`；随后重启或重新加载 Pi，使其重新索引 prompt files。
 
 leader 是唯一状态写入者和 agent 指派者。每个 child 都使用 `context: "fresh"`；builder 将 `FINISH` 交给 leader，leader 再启动独立 test-runner/reviewer，失败也先返回 leader，再路由 owning builder。测试和审查 agent 永不修改产品代码。
 

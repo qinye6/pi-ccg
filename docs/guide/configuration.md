@@ -11,9 +11,22 @@ scout/planner → Pi subagents.defaultModel
 
 A run may create `N` frontend and `M` backend instances from the planner's component/profile contract. Model and provider settings are merged into existing Pi files; unrelated user fields are preserved.
 
+## Thinking levels
+
+Thinking intensity is configured independently for four role groups:
+
+| Option | Agents |
+|---|---|
+| `--planning-thinking <level>` | `ccg-project-scout`, `ccg-planner` |
+| `--frontend-thinking <level>` | `ccg-frontend-builder` |
+| `--backend-thinking <level>` | `ccg-backend-builder` |
+| `--review-thinking <level>` | `ccg-reviewer`, `ccg-test-runner` |
+
+Accepted levels are `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Omitting an option inherits the Pi/model default and writes no field. Explicit selections are stored in CCG metadata for `ccg update` and merged into `settings.json -> subagents.agentOverrides.<agent>.thinking` without replacing unrelated settings. Exact known models are validated against `reasoning` and `thinkingLevelMap`; unknown models are preserved and reported by `doctor` as capability-unknown rather than guessed.
+
 ## Leader persona and output style
 
-CCG supports nine selectable leader output styles: `default`, `engineer-professional`, `nekomata-engineer`, `laowang-engineer`, `ojousama-engineer`, `abyss-cultivator`, `abyss-concise`, `abyss-command`, and `abyss-ritual`. Interactive `ccg init` is a twelve-stage flow that presents the persona stage; non-interactive init accepts `--persona <name>`. `ccg style <name>` switches the selected style, and `ccg style default` restores the default.
+CCG supports nine selectable leader output styles: `default`, `engineer-professional`, `nekomata-engineer`, `laowang-engineer`, `ojousama-engineer`, `abyss-cultivator`, `abyss-concise`, `abyss-command`, and `abyss-ritual`. Interactive `ccg init` is a thirteen-stage flow that presents the thinking and persona stages; non-interactive init accepts `--persona <name>`. `ccg style <name>` switches the selected style, and `ccg style default` restores the default.
 
 The selected persona is persisted in CCG metadata and preserved by `ccg update`. It changes only the leader prose emitted by `/ccg` and `/ccg-go`. Child contracts and JSON, tests, reviews, board data, credentials, and coordination behavior are unaffected. CCG does not modify user-managed `SYSTEM.md` or `APPEND_SYSTEM.md`.
 

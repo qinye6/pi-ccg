@@ -73,6 +73,7 @@ beforeEach(async () => {
     if (message.includes('选择前端模型')) return { value: 'demo/frontend' }
     if (message.includes('选择后端模型')) return { value: 'demo/backend' }
     if (message.includes('选择审查/测试模型')) return { value: 'demo/review' }
+    if (message.endsWith('thinking:')) return { value: '__inherit__' }
     if (message.includes('人格与输出风格')) return { value: 'nekomata-engineer' }
     if (message === '项目入口:') return { value: 'no' }
     if (message === '确认安装:') return { value: finalChoice === 'confirm' ? 'confirm' : '__cancel__' }

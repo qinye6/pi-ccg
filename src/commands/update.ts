@@ -46,6 +46,10 @@ export function initOptionsFromMetadata(metadata: CcgInstallerMetadata | null): 
     frontendModel: metadata?.lastChoices?.frontendModel,
     backendModel: metadata?.lastChoices?.backendModel,
     reviewModel: metadata?.lastChoices?.reviewModel,
+    planningThinking: metadata?.lastChoices?.thinking?.planningThinking,
+    frontendThinking: metadata?.lastChoices?.thinking?.frontendThinking,
+    backendThinking: metadata?.lastChoices?.thinking?.backendThinking,
+    reviewThinking: metadata?.lastChoices?.thinking?.reviewThinking,
     persona: normalizeCcgPersonaMetadata(metadata),
     devAgentCap: metadata?.lastChoices?.caps?.devAgentCap,
     globalConcurrencyLimit: metadata?.lastChoices?.caps?.globalConcurrencyLimit,
@@ -64,6 +68,10 @@ export function buildLatestInitArgs(options: InitOptions): string[] {
   add('--frontend-model', options.frontendModel)
   add('--backend-model', options.backendModel)
   add('--review-model', options.reviewModel)
+  add('--planning-thinking', options.planningThinking)
+  add('--frontend-thinking', options.frontendThinking)
+  add('--backend-thinking', options.backendThinking)
+  add('--review-thinking', options.reviewThinking)
   add('--persona', options.persona)
   if (options.extensionIds && options.extensionIds.length > 0) add('--extensions', options.extensionIds.join(','))
   else args.push('--no-optional-extensions')

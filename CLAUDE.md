@@ -1,6 +1,6 @@
 # CCG for Pi CLI
 
-**Last Updated**: 2026-07-30 (v3.2.7)
+**Last Updated**: 2026-08-25 (v3.2.8)
 
 > 当前架构为 Pi-only。历史变更见 [CHANGELOG.md](./CHANGELOG.md)。
 
@@ -89,6 +89,8 @@ maxSubagentDepth = 1
 /ccg-go      兼容入口
 ```
 
+这些是 Pi prompt commands；Claude harness 的 `/ccg:go` 属于不同命名空间。fresh install 缺失命令时运行 `ccg init`，已有 metadata 但资产缺失时运行 `ccg update`，磁盘 prompts 更新后需要重启/重新加载 Pi 才会刷新 `/` 菜单。
+
 leader 是唯一 agent 指派者、状态迁移者和 `.pi/ccg/` 写入者。任务投影位于 `.pi/ccg/tasks/<taskId>/board.json`、`events.jsonl`、`summary.md`，schema 为 `ccg.taskBoard.v1` / `ccg.taskEvent.v1`。看板是 `pi-subagents` lifecycle/FleetView 的有界脱敏投影，不是第二执行引擎；uninstall 默认保留复盘历史。builder FINISH 只交 leader，leader 再启动 fresh test-runner/reviewer；test/reviewer 不修改产品代码。
 
 
@@ -103,16 +105,18 @@ ccg status [--install-dir <path>] [--project-dir <path>]
 ccg uninstall
 ```
 
-`init` 是十二阶段状态机；其中 persona 阶段选择 leader 的输出风格：
+`init` 是十三阶段状态机；其中 thinking 阶段配置角色组推理强度，persona 阶段选择 leader 的输出风格：
 
 ```text
 language → environment → extensions → scope → provider → frontend
-→ backend → review → limits → persona → entry → summary
+→ backend → review → thinking → limits → persona → entry → summary
 ```
 
 可选 persona 为 `default`、`engineer-professional`、`nekomata-engineer`、`laowang-engineer`、`ojousama-engineer`，以及四种 abyss 风格：`abyss-cultivator`、`abyss-concise`、`abyss-command`、`abyss-ritual`。persona 只影响 `/ccg` 与 `/ccg-go` leader 的 prose；child contract、JSON、测试、审查、board、凭据与协调协议不变。用户自管的 `SYSTEM.md` / `APPEND_SYSTEM.md` 不被修改。
 
 交互式 `ccg init` 在 persona 阶段选择风格；非交互式安装使用 `--persona <name>`。`ccg style <name>` 可切换已安装风格，`ccg style default` 恢复默认风格。当前选择写入 CCG metadata，`ccg update` 保留该选择；style 操作不改变 package lifecycle。
+
+thinking 阶段按四组配置 `planningThinking`、`frontendThinking`、`backendThinking`、`reviewThinking`，对应 scout/planner、frontend builder、backend builder、reviewer/test-runner。合法值为 `off | minimal | low | medium | high | xhigh | max`；undefined 表示继承，不写 override。非交互 flags 为 `--planning-thinking`、`--frontend-thinking`、`--backend-thinking`、`--review-thinking`。配置写入 `settings.json -> subagents.agentOverrides` 并由 metadata/update 保留；exact preset 做 capability 校验，unknown model 只由 doctor warning，不猜测 provider-specific wire schema。
 
 ## 入口与模块
 
@@ -121,7 +125,7 @@ language → environment → extensions → scope → provider → frontend
 | `bin/ccg.mjs` | npm executable |
 | `src/cli.ts` | CAC CLI 入口 |
 | `src/cli-setup.ts` | Pi-only command 注册 |
-| `src/commands/init.ts` | 十二阶段安装向导与扩展选择 |
+| `src/commands/init.ts` | 十三阶段安装向导、扩展/thinking/persona 选择 |
 | `src/commands/extensions.ts` | 扩展 catalog 状态、确认与 package lifecycle |
 | `src/commands/update.ts` | metadata 驱动更新；不执行第三方 package 操作 |
 | `src/commands/doctor.ts` | doctor/status |

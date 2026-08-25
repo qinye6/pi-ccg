@@ -1,4 +1,4 @@
-import type { CcgInstallerMetadata, InstallResult, ManagedFileEntry, PiCapsConfig } from '../types'
+import type { CcgInstallerMetadata, InstallResult, ManagedFileEntry, PiCapsConfig, PiThinkingOverrides } from '../types'
 import type { PiProvider, PiSubagentsSettings } from './pi-config'
 import { homedir } from 'node:os'
 import ansis from 'ansis'
@@ -28,6 +28,7 @@ import {
   CCG_PI_LEADER_PROMPT_NAMES,
   CCG_PI_MANAGED_PROMPT_NAMES,
   CCG_PI_RETIRED_AGENT_NAMES,
+  CCG_PI_THINKING_AGENTS,
   DEFAULT_PI_CAPS,
   getPiAgentHome,
   getProjectAgentsMdPath,
@@ -126,7 +127,7 @@ interface InstallContext {
   result: InstallResult
 }
 
-export interface PiModelOverrides {
+export interface PiModelOverrides extends PiThinkingOverrides {
   frontendModel?: string
   backendModel?: string
   reviewModel?: string
@@ -1503,17 +1504,34 @@ export async function installPiSettingsOverrides(
   overrides: PiModelOverrides,
 ): Promise<void> {
   const agentOverrides: NonNullable<PiSubagentsSettings['agentOverrides']> = {}
-  const addOverride = (agentName: string, model?: string): void => {
-    const normalized = model?.trim()
-    if (normalized) {
-      agentOverrides[agentName] = { model: normalized }
+  const clearThinkingAgentNames: string[] = []
+  const addOverride = (
+    agentName: string,
+    patch: NonNullable<PiSubagentsSettings['agentOverrides']>[string],
+  ): void => {
+    const model = patch.model?.trim()
+    const normalized = {
+      ...(model ? { model } : {}),
+      ...(patch.thinking ? { thinking: patch.thinking } : {}),
+    }
+    if (Object.keys(normalized).length > 0) {
+      agentOverrides[agentName] = {
+        ...agentOverrides[agentName],
+        ...normalized,
+      }
     }
   }
 
-  addOverride('ccg-backend-builder', overrides.backendModel)
-  addOverride('ccg-frontend-builder', overrides.frontendModel)
-  addOverride('ccg-reviewer', overrides.reviewModel)
-  addOverride('ccg-test-runner', overrides.reviewModel)
+  addOverride('ccg-backend-builder', { model: overrides.backendModel })
+  addOverride('ccg-frontend-builder', { model: overrides.frontendModel })
+  addOverride('ccg-reviewer', { model: overrides.reviewModel })
+  addOverride('ccg-test-runner', { model: overrides.reviewModel })
+
+  for (const [field, agentNames] of Object.entries(CCG_PI_THINKING_AGENTS)) {
+    const thinking = overrides[field as keyof PiThinkingOverrides]
+    if (thinking === undefined) clearThinkingAgentNames.push(...agentNames)
+    else for (const agentName of agentNames) addOverride(agentName, { thinking })
+  }
 
   const settingsPath = piSettingsPath(ctx)
   const patch: PiSubagentsSettings = { agentOverrides }
@@ -1529,6 +1547,7 @@ export async function installPiSettingsOverrides(
       patch,
       CCG_PI_RETIRED_AGENT_NAMES,
       settingsPath,
+      clearThinkingAgentNames,
     )
     if (mergeResult.changed) {
       pushManagedFile(ctx, {
@@ -1620,6 +1639,10 @@ export async function installPiWorkflow(options: PiInstallOptions = {}): Promise
     frontendModel: options.frontendModel,
     backendModel: options.backendModel,
     reviewModel: options.reviewModel,
+    planningThinking: options.planningThinking,
+    frontendThinking: options.frontendThinking,
+    backendThinking: options.backendThinking,
+    reviewThinking: options.reviewThinking,
     persona: normalizeCcgPersona(options.persona),
     managedFiles,
     result,
@@ -1647,6 +1670,10 @@ export async function installPiWorkflow(options: PiInstallOptions = {}): Promise
     frontendModel: options.frontendModel,
     backendModel: options.backendModel,
     reviewModel: options.reviewModel,
+    planningThinking: options.planningThinking,
+    frontendThinking: options.frontendThinking,
+    backendThinking: options.backendThinking,
+    reviewThinking: options.reviewThinking,
   })
   await installPiProviders(ctx, options.providers, options.forceProviderUpdate ?? false)
 

@@ -11,6 +11,7 @@ import { style } from './commands/style'
 import { update } from './commands/update'
 import { initI18n } from './i18n'
 import { uninstallPiWorkflow } from './utils/installer'
+import { parsePiThinkingLevel } from './utils/pi-config'
 import { getCcgMetadataPath } from './utils/pi-paths'
 
 function customizeHelp(sections: any[]): any[] {
@@ -21,6 +22,10 @@ function customizeHelp(sections: any[]): any[] {
       `  ${ansis.green('--frontend-model')} <provider/model>`,
       `  ${ansis.green('--backend-model')} <provider/model>`,
       `  ${ansis.green('--review-model')} <provider/model>`,
+      `  ${ansis.green('--planning-thinking')} <level>`,
+      `  ${ansis.green('--frontend-thinking')} <level>`,
+      `  ${ansis.green('--backend-thinking')} <level>`,
+      `  ${ansis.green('--review-thinking')} <level>`,
       `  ${ansis.green('--persona')} <id>`,
       `  ${ansis.green('--provider-file')} <path>`,
       `  ${ansis.green('--extensions')} <id,id>`,
@@ -75,6 +80,10 @@ export async function setupCommands(cli: CAC): Promise<void> {
     .option('--frontend-model <model>', 'Model for all dynamic frontend builder instances')
     .option('--backend-model <model>', 'Backend builder model')
     .option('--review-model <model>', 'Reviewer and test-runner model')
+    .option('--planning-thinking <level>', 'Thinking level for scout and planner')
+    .option('--frontend-thinking <level>', 'Thinking level for frontend builders')
+    .option('--backend-thinking <level>', 'Thinking level for backend builders')
+    .option('--review-thinking <level>', 'Thinking level for reviewer and test-runner')
     .option('--persona <id>', 'CCG leader persona/output style')
     .option('--provider-file <path>', 'JSON provider definitions to append without exposing credentials')
     .option('--extensions <id,id>', 'Explicit optional Pi extension IDs for non-interactive installs')
@@ -96,6 +105,10 @@ export async function setupCommands(cli: CAC): Promise<void> {
         ...options,
         frontendModel: options.frontendModel ?? options.frontend,
         backendModel: options.backendModel ?? options.backend,
+        planningThinking: parsePiThinkingLevel(options.planningThinking, '--planning-thinking'),
+        frontendThinking: parsePiThinkingLevel(options.frontendThinking, '--frontend-thinking'),
+        backendThinking: parsePiThinkingLevel(options.backendThinking, '--backend-thinking'),
+        reviewThinking: parsePiThinkingLevel(options.reviewThinking, '--review-thinking'),
         installProjectAssets: options.projectAssets,
         extensionIds: options.extensions?.split(',').map(id => id.trim()).filter(Boolean),
         noOptionalExtensions: options.optionalExtensions === false,

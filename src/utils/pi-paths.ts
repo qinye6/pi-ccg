@@ -41,6 +41,13 @@ export const CCG_PI_MODEL_AGENTS = {
   reviewModel: ['ccg-reviewer', 'ccg-test-runner'],
 } as const
 
+export const CCG_PI_THINKING_AGENTS = {
+  planningThinking: ['ccg-project-scout', 'ccg-planner'],
+  frontendThinking: ['ccg-frontend-builder'],
+  backendThinking: ['ccg-backend-builder'],
+  reviewThinking: ['ccg-reviewer', 'ccg-test-runner'],
+} as const
+
 /** Pi 用户级根目录 ~/.pi/agent */
 export function getPiAgentHome(): string {
   return join(homedir(), '.pi', 'agent')

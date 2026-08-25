@@ -44,6 +44,15 @@ export interface PiCapsConfig {
   maxSubagentDepth: number
 }
 
+export type PiThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+
+export interface PiThinkingOverrides {
+  planningThinking?: PiThinkingLevel
+  frontendThinking?: PiThinkingLevel
+  backendThinking?: PiThinkingLevel
+  reviewThinking?: PiThinkingLevel
+}
+
 // 受管理文件清单，用于回滚
 export interface ManagedFileEntry {
   path: string
@@ -102,6 +111,7 @@ export interface CcgInstallerMetadata {
     reviewModel?: string
     persona?: PiPersonaId
     caps: PiCapsConfig
+    thinking?: PiThinkingOverrides
   }
   extensions?: PiExtensionMetadataEntry[]
   managedFiles: ManagedFileEntry[]
@@ -163,6 +173,10 @@ export interface InitOptions {
   frontendModel?: string
   backendModel?: string
   reviewModel?: string
+  planningThinking?: PiThinkingLevel
+  frontendThinking?: PiThinkingLevel
+  backendThinking?: PiThinkingLevel
+  reviewThinking?: PiThinkingLevel
   persona?: PiPersonaId
   providerFile?: string
   extensionIds?: string[]

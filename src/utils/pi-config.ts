@@ -1,3 +1,4 @@
+import type { PiThinkingLevel } from '../types'
 import { open } from 'node:fs/promises'
 import fs from 'fs-extra'
 import { dirname } from 'pathe'
@@ -8,10 +9,20 @@ import {
   getSubagentExtensionConfigPath,
 } from './pi-paths'
 
+export const PI_THINKING_LEVELS = [
+  'off',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+] as const satisfies readonly PiThinkingLevel[]
+
 export interface PiAgentOverride {
   model?: string
   fallbackModels?: string[]
-  thinking?: string
+  thinking?: PiThinkingLevel
   systemPromptMode?: string
   inheritProjectContext?: boolean
   inheritSkills?: boolean
@@ -39,7 +50,7 @@ export interface PiModelConfig {
   api?: string
   baseUrl?: string
   reasoning?: boolean
-  thinkingLevelMap?: Partial<Record<'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max', string | null>>
+  thinkingLevelMap?: Partial<Record<PiThinkingLevel, string | null>>
   input?: ('text' | 'image')[]
   cost?: {
     input: number
@@ -89,6 +100,50 @@ export interface SubagentExtensionConfig {
 }
 
 type JsonRecord = Record<string, unknown>
+
+export type PiThinkingCapability = 'supported' | 'unsupported' | 'unknown'
+
+export interface PiThinkingAssessment {
+  status: PiThinkingCapability
+  reason: string
+}
+
+export function isPiThinkingLevel(value: unknown): value is PiThinkingLevel {
+  return typeof value === 'string'
+    && PI_THINKING_LEVELS.includes(value as PiThinkingLevel)
+}
+
+export function parsePiThinkingLevel(value: unknown, optionName = 'thinking'): PiThinkingLevel | undefined {
+  if (value === undefined) return undefined
+  if (isPiThinkingLevel(value)) return value
+  throw new Error(`Invalid ${optionName} level: ${String(value)}. Expected one of: ${PI_THINKING_LEVELS.join(', ')}`)
+}
+
+export function assessPiThinkingLevel(
+  model: PiModelConfig | undefined,
+  level: PiThinkingLevel,
+): PiThinkingAssessment {
+  if (!model) {
+    return { status: 'unknown', reason: 'model capability metadata is unavailable' }
+  }
+  if (model.reasoning === false) {
+    return level === 'off'
+      ? { status: 'supported', reason: 'reasoning is disabled for this model' }
+      : { status: 'unsupported', reason: 'model declares reasoning: false' }
+  }
+
+  const mapped = model.thinkingLevelMap?.[level]
+  if (mapped === null) {
+    return { status: 'unsupported', reason: `model explicitly disables ${level}` }
+  }
+  if (model.thinkingLevelMap && (level === 'xhigh' || level === 'max') && mapped === undefined) {
+    return { status: 'unsupported', reason: `model does not declare ${level} support` }
+  }
+  if (!model.thinkingLevelMap && level === 'max') {
+    return { status: 'unsupported', reason: 'max requires an explicit thinking level mapping' }
+  }
+  return { status: 'supported', reason: 'model capability metadata accepts this level' }
+}
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -251,6 +306,7 @@ export async function reconcilePiSettingsSubagents(
   patch: PiSubagentsSettings,
   removeAgentNames: readonly string[],
   settingsPath: string = getPiSettingsPath(),
+  clearThinkingAgentNames: readonly string[] = [],
 ): Promise<{ changed: boolean, backupPath: string | null }> {
   const { existed, data } = await readJsonOrEmpty<PiSettingsFile>(settingsPath)
   const nextSettings: PiSettingsFile = { ...data }
@@ -259,6 +315,15 @@ export async function reconcilePiSettingsSubagents(
 
   for (const agentName of removeAgentNames) {
     delete nextOverrides[agentName]
+  }
+
+  for (const agentName of clearThinkingAgentNames) {
+    const override = nextOverrides[agentName]
+    if (!override) continue
+    const nextOverride = { ...override }
+    delete nextOverride.thinking
+    if (Object.keys(nextOverride).length === 0) delete nextOverrides[agentName]
+    else nextOverrides[agentName] = nextOverride
   }
 
   if (Object.keys(nextOverrides).length === 0) delete nextSubagents.agentOverrides

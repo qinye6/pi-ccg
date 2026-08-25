@@ -2,7 +2,7 @@
 
 > [根目录](../CLAUDE.md) > **src**
 
-**Last Updated**: 2026-07-30 (v3.2.7)
+**Last Updated**: 2026-08-25 (v3.2.8)
 
 ## 模块职责
 
@@ -19,7 +19,7 @@ npx pi-ccg → bin/ccg.mjs → dist/cli.mjs → src/cli.ts → setupCommands()
 | 命令 | 实现 | 作用 |
 |---|---|---|
 | `ccg` | `commands/menu.ts` | Pi workflow 交互菜单 |
-| `ccg init` / `ccg i` | `commands/init.ts` | 十二阶段 Pi 安装/配置与扩展选择向导 |
+| `ccg init` / `ccg i` | `commands/init.ts` | 十三阶段 Pi 安装/配置与扩展选择向导 |
 | `ccg style <name>` | `commands/style.ts` | 切换持久化的 leader 输出风格 |
 | `ccg update [--install-dir <path>]` | `commands/update.ts` | 从 metadata 恢复选择并安全重装；不执行 package 操作 |
 | `ccg extensions [--install-dir <path>]` | `commands/extensions.ts` | 管理扩展 catalog、选择与 package lifecycle |
@@ -27,16 +27,16 @@ npx pi-ccg → bin/ccg.mjs → dist/cli.mjs → src/cli.ts → setupCommands()
 | `ccg status [--install-dir <path>] [--project-dir <path>]` | `commands/doctor.ts` | 显示安装与 extension ownership 概况 |
 | `ccg uninstall` | `uninstallPiWorkflow()` | 移除 CCG assets 与 CCG-owned packages，保留 adopted packages |
 
-`init` 十二阶段状态机：
+`init` 十三阶段状态机：
 
 ```text
 language → environment → extensions → scope → provider → frontend model
-→ backend model → review model → limits → persona → entry → summary
+→ backend model → review model → thinking → limits → persona → entry → summary
 ```
 
 persona 可选 `default`、`engineer-professional`、`nekomata-engineer`、`laowang-engineer`、`ojousama-engineer`、`abyss-cultivator`、`abyss-concise`、`abyss-command`、`abyss-ritual`。交互式 init 在 persona 阶段选择；非交互式 init 使用 `--persona <name>`。`ccg style <name>` 切换风格，`ccg style default` 恢复默认；选择写入 CCG metadata，update 保留选择。persona 只改变 `/ccg` 与 `/ccg-go` leader prose，不改变 child contracts/JSON、测试、审查、board、凭据或协调协议，也不修改用户 `SYSTEM.md` / `APPEND_SYSTEM.md`。
 
-主要 options：`--extensions`、`--no-optional-extensions`、`--install-required-package`、`--frontend-model`、`--backend-model`、`--review-model`、`--provider-file`、`--persona`、四个 cap 参数、`--project-assets/--no-project-assets`、`--install-dir`、`--skip-prompt`、`--force`。`--preserve-extensions` 仅供 update 保留 metadata 且禁止 package reconciliation。
+主要 options：`--extensions`、`--no-optional-extensions`、`--install-required-package`、`--frontend-model`、`--backend-model`、`--review-model`、`--planning-thinking`、`--frontend-thinking`、`--backend-thinking`、`--review-thinking`、`--provider-file`、`--persona`、四个 cap 参数、`--project-assets/--no-project-assets`、`--install-dir`、`--skip-prompt`、`--force`。thinking 合法值为 `off | minimal | low | medium | high | xhigh | max`；省略表示继承 Pi/模型默认且不写 override。`--preserve-extensions` 仅供 update 保留 metadata 且禁止 package reconciliation。
 
 ## Pi 安装器
 
@@ -102,6 +102,10 @@ reviewModel   → ccg-reviewer, ccg-test-runner
 
 scout/planner 继承 Pi `subagents.defaultModel`。
 
+thinking 按四个角色组独立配置：`planningThinking` 映射 scout/planner，`frontendThinking` 映射 frontend builder，`backendThinking` 映射 backend builder，`reviewThinking` 映射 reviewer/test-runner。显式值写入 CCG metadata 并由 update 恢复，同时合并到 `settings.json -> subagents.agentOverrides.<agent>.thinking`；未设置时不创建字段。exact known model 按 `reasoning` / `thinkingLevelMap` 确定性校验，unknown model 不猜测，由 doctor 报告 capability warning。
+
+Pi prompt commands 使用 `/ccg`、`/ccg-board`、`/ccg-replay`、`/ccg-resume`、`/ccg-go`；Claude harness 的 `/ccg:go` 属于不同命名空间。未初始化时运行 `ccg init`，已有 metadata 但 assets 缺失时运行 `ccg update`；prompt files 写入后需重启/重新加载 Pi 才会刷新 `/` 菜单。
+
 Pi 根据 planner contract 动态派生 `N` 个 frontend builder 实例和 `M` 个 backend builder 实例。实例按 component/profile/wave 执行；`ccg-miniprogram-builder` 已退休，小程序/微信是 frontend `componentProfile`。
 
 ```text
@@ -132,7 +136,7 @@ requiredSpawns = 2 + (N_frontend + M_backend) + 1 + 1
 
 | 文件 | 作用 |
 |---|---|
-| `commands/init.ts` | 十二阶段向导、扩展选择、persona 与 metadata 写入 |
+| `commands/init.ts` | 十三阶段向导、扩展/thinking/persona 选择与 metadata 写入 |
 | `commands/extensions.ts` | catalog 状态、用户确认、安装/移除与 ownership |
 | `commands/update.ts` | metadata 驱动 assets 更新；不执行第三方 package 操作 |
 | `commands/doctor.ts` | required/selected/skipped 健康检查与脱敏状态 |
@@ -171,11 +175,11 @@ CCG 只写 `.pi/mcp.json.example`，不覆盖、删除或输出用户 `.pi/mcp.j
 
 `src/utils/__tests__/` 的 Pi 主线覆盖：
 
-- CLI command/flag contract；
-- 十二阶段 init、扩展选择与 custom Pi home metadata；
-- update 对 partial legacy metadata 的兼容、扩展选择保留、公开 `--install-dir` 与 atomic metadata/config 写入；
+- CLI command/flag contract，包括四个 thinking flags 与合法值校验；
+- 十三阶段 init、扩展/thinking 选择与 custom Pi home metadata；
+- update 对 partial legacy metadata 的兼容、thinking/扩展选择保留、公开 `--install-dir` 与 atomic metadata/config 写入；
 - package inventory、catalog validation、安全 install/remove 参数、ownership 与失败重试；
-- doctor required/selected/skipped 分级、MCP 路径存在性与输出脱敏；
+- doctor required/selected/skipped 分级、thinking mapping/capability diagnostics、slash command init/update/reload 修复提示、MCP 路径存在性与输出脱敏；
 - 六个 role templates、动态 builder 路由与项目资产安装；
 - provider/settings/cap merge；
 - AGENTS managed block；

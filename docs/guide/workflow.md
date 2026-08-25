@@ -19,11 +19,15 @@ ccg-project-scout
 - `/ccg-resume <taskId>` restores only the leader checkpoint and always starts new children with fresh context.
 - `/ccg-go` remains compatible with earlier installations.
 
+These are Pi prompt commands. Claude's `/ccg:go` skill belongs to a different host namespace. If Pi's `/` menu is missing CCG commands, use `ccg init` for an uninitialized installation or `ccg update` when metadata exists but assets are missing, then restart/reload Pi so it reindexes the prompt files.
+
 ## Leader persona and output style
 
-The leader may use `default`, `engineer-professional`, `nekomata-engineer`, `laowang-engineer`, `ojousama-engineer`, or one of four abyss variants: `abyss-cultivator`, `abyss-concise`, `abyss-command`, and `abyss-ritual`. The twelve-stage `ccg init` flow offers this choice interactively; non-interactive setup uses `--persona <name>`. Use `ccg style <name>` to switch and `ccg style default` to restore the default.
+The leader may use `default`, `engineer-professional`, `nekomata-engineer`, `laowang-engineer`, `ojousama-engineer`, or one of four abyss variants: `abyss-cultivator`, `abyss-concise`, `abyss-command`, and `abyss-ritual`. The thirteen-stage `ccg init` flow offers this choice interactively; non-interactive setup uses `--persona <name>`. Use `ccg style <name>` to switch and `ccg style default` to restore the default.
 
 Persona selection is metadata-backed and survives `ccg update`. It affects only leader prose for `/ccg` and `/ccg-go`; child contracts/JSON, tests, reviews, board, credentials, and the workflow coordination contract remain unchanged. User `SYSTEM.md` and `APPEND_SYSTEM.md` are untouched.
+
+The thinking stage configures planning, frontend, backend, and review role groups independently. Explicit `off | minimal | low | medium | high | xhigh | max` selections are persisted and merged into `subagents.agentOverrides`; omitted groups inherit Pi/model defaults. Exact known model capabilities are validated, while unknown models are retained with a `doctor` warning.
 
 ## Durable task board
 

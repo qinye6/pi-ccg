@@ -1,4 +1,4 @@
-import type { InstallScope, PiExtensionMetadataEntry } from '../types'
+import type { InstallScope, PiExtensionMetadataEntry, PiThinkingLevel, PiThinkingOverrides } from '../types'
 import ansis from 'ansis'
 import fs from 'fs-extra'
 import { join } from 'pathe'
@@ -10,6 +10,7 @@ import {
   CCG_PI_ACTIVE_AGENT_NAMES,
   CCG_PI_MANAGED_PROMPT_NAMES,
   CCG_PI_RETIRED_AGENT_NAMES,
+  CCG_PI_THINKING_AGENTS,
   getCcgMetadataPath,
   getPiAgentHome,
   getPiModelsPath,
@@ -20,7 +21,8 @@ import {
   getProjectPiPromptsDir,
   getSubagentExtensionConfigPath,
 } from '../utils/pi-paths'
-import { computeEffectiveDevParallelism, computeRequiredSpawns, inspectPiModels } from '../utils/pi-config'
+import { assessPiThinkingLevel, computeEffectiveDevParallelism, computeRequiredSpawns, inspectPiModels, isPiThinkingLevel } from '../utils/pi-config'
+import { findPiProviderModelPreset } from '../utils/pi-provider-presets'
 import { inspectPiWebSearchConfig } from '../utils/pi-extension-config'
 import {
   PI_EXTENSION_CATALOG,
@@ -91,6 +93,13 @@ function assetCandidates(
   return [projectPath, userPath]
 }
 
+function defaultModelReference(settings: Record<string, unknown> | null): string | undefined {
+  const subagents = settings?.subagents
+  if (typeof subagents !== 'object' || subagents === null || Array.isArray(subagents)) return undefined
+  const defaultModel = (subagents as Record<string, unknown>).defaultModel
+  return typeof defaultModel === 'string' && defaultModel ? defaultModel : undefined
+}
+
 function modelReferences(settings: Record<string, unknown> | null): string[] {
   const subagents = settings?.subagents
   if (typeof subagents !== 'object' || subagents === null || Array.isArray(subagents)) return []
@@ -109,15 +118,21 @@ function configuredModels(models: Record<string, unknown> | null): Set<string> {
   if (typeof providers !== 'object' || providers === null || Array.isArray(providers)) return result
   for (const [providerName, provider] of Object.entries(providers)) {
     if (typeof provider !== 'object' || provider === null || Array.isArray(provider)) continue
-    const list = (provider as Record<string, unknown>).models
-    if (!Array.isArray(list)) continue
-    for (const model of list) {
-      const id = typeof model === 'string'
-        ? model
-        : typeof model === 'object' && model !== null && !Array.isArray(model)
-          ? (model as Record<string, unknown>).id
-          : null
-      if (typeof id === 'string') result.add(`${providerName}/${id}`)
+    const providerValue = provider as Record<string, unknown>
+    const list = providerValue.models
+    if (Array.isArray(list)) {
+      for (const model of list) {
+        const id = typeof model === 'string'
+          ? model
+          : typeof model === 'object' && model !== null && !Array.isArray(model)
+            ? (model as Record<string, unknown>).id
+            : null
+        if (typeof id === 'string') result.add(`${providerName}/${id}`)
+      }
+    }
+    const overrides = providerValue.modelOverrides
+    if (typeof overrides === 'object' && overrides !== null && !Array.isArray(overrides)) {
+      for (const modelId of Object.keys(overrides)) result.add(`${providerName}/${modelId}`)
     }
   }
   return result
@@ -149,6 +164,49 @@ function metadataPersona(metadata: Record<string, unknown> | null): unknown {
   return typeof choices === 'object' && choices !== null && !Array.isArray(choices)
     ? (choices as Record<string, unknown>).persona
     : undefined
+}
+
+function metadataThinking(metadata: Record<string, unknown> | null): {
+  values: PiThinkingOverrides
+  invalid: string[]
+} {
+  const choices = metadata?.lastChoices
+  if (typeof choices !== 'object' || choices === null || Array.isArray(choices)) {
+    return { values: {}, invalid: [] }
+  }
+  const thinking = (choices as Record<string, unknown>).thinking
+  if (typeof thinking !== 'object' || thinking === null || Array.isArray(thinking)) {
+    return { values: {}, invalid: thinking === undefined ? [] : ['thinking'] }
+  }
+
+  const values: PiThinkingOverrides = {}
+  const invalid: string[] = []
+  for (const field of Object.keys(CCG_PI_THINKING_AGENTS) as Array<keyof PiThinkingOverrides>) {
+    const value = (thinking as Record<string, unknown>)[field]
+    if (value === undefined) continue
+    if (isPiThinkingLevel(value)) values[field] = value
+    else invalid.push(field)
+  }
+  return { values, invalid }
+}
+
+function agentOverrideSettings(settings: Record<string, unknown> | null): Record<string, Record<string, unknown>> {
+  const subagents = settings?.subagents
+  if (typeof subagents !== 'object' || subagents === null || Array.isArray(subagents)) return {}
+  const overrides = (subagents as Record<string, unknown>).agentOverrides
+  if (typeof overrides !== 'object' || overrides === null || Array.isArray(overrides)) return {}
+  return Object.fromEntries(
+    Object.entries(overrides as Record<string, unknown>)
+      .filter((entry): entry is [string, Record<string, unknown>] => (
+        typeof entry[1] === 'object' && entry[1] !== null && !Array.isArray(entry[1])
+      )),
+  )
+}
+
+function presetForModelReference(reference: unknown) {
+  if (typeof reference !== 'string' || !reference.includes('/')) return undefined
+  const [providerId, ...modelParts] = reference.split('/')
+  return findPiProviderModelPreset(providerId, modelParts.join('/'))
 }
 
 async function collectChecks(options: DoctorOptions = {}): Promise<Check[]> {
@@ -258,8 +316,10 @@ async function collectChecks(options: DoctorOptions = {}): Promise<Check[]> {
     label: 'CCG prompt commands',
     status: missingPrompts.length === 0 ? OK : WARN,
     detail: missingPrompts.length === 0
-      ? `${CCG_PI_MANAGED_PROMPT_NAMES.length}/${CCG_PI_MANAGED_PROMPT_NAMES.length} installed: /ccg, /ccg-board, /ccg-replay, /ccg-resume, /ccg-go`
-      : `missing for ${scope ?? 'unknown'} install scope: ${missingPrompts.join(', ')}`,
+      ? `${CCG_PI_MANAGED_PROMPT_NAMES.length}/${CCG_PI_MANAGED_PROMPT_NAMES.length} installed: /ccg, /ccg-board, /ccg-replay, /ccg-resume, /ccg-go; restart/reload Pi if they are absent from the / menu (Claude uses /ccg:go)`
+      : metadata
+        ? `missing for ${scope ?? 'unknown'} install scope: ${missingPrompts.join(', ')}; run: ccg update`
+        : `not initialized: ${missingPrompts.join(', ')}; run: ccg init (Pi command is /ccg-go, not /ccg:go)`,
   })
 
   if (scope === 'user') {
@@ -288,6 +348,41 @@ async function collectChecks(options: DoctorOptions = {}): Promise<Check[]> {
     detail: references.length > 0 ? `${references.length} agent override(s)` : 'agents inherit Pi default model',
   })
 
+  const savedThinking = metadataThinking(metadata)
+  const configuredThinking = Object.entries(savedThinking.values) as Array<[keyof PiThinkingOverrides, PiThinkingLevel]>
+  const agentOverrides = agentOverrideSettings(settings)
+  const defaultModel = defaultModelReference(settings)
+  let thinkingMismatches = 0
+  let unsupportedThinking = 0
+  let unknownThinking = 0
+  for (const [field, level] of configuredThinking) {
+    for (const agentName of CCG_PI_THINKING_AGENTS[field]) {
+      const override = agentOverrides[agentName]
+      if (override?.thinking !== level) thinkingMismatches += 1
+      const preset = presetForModelReference(override?.model ?? defaultModel)
+      if (!preset) {
+        unknownThinking += 1
+        continue
+      }
+      if (assessPiThinkingLevel(preset.model, level).status === 'unsupported') {
+        unsupportedThinking += 1
+      }
+    }
+  }
+  const thinkingWarnings = savedThinking.invalid.length
+    + thinkingMismatches
+    + unsupportedThinking
+    + unknownThinking
+  checks.push({
+    label: 'Subagent thinking',
+    status: configuredThinking.length === 0 && savedThinking.invalid.length === 0
+      ? SKIP
+      : thinkingWarnings > 0 ? WARN : OK,
+    detail: configuredThinking.length === 0 && savedThinking.invalid.length === 0
+      ? 'inherit Pi/model defaults; no CCG thinking selection saved'
+      : `groups=${configuredThinking.length}, invalidMetadata=${savedThinking.invalid.length}, settingsMismatch=${thinkingMismatches}, unsupported=${unsupportedThinking}, capabilityUnknown=${unknownThinking}`,
+  })
+
   const modelsPath = getPiModelsPath(piHome)
   const modelsInspection = await inspectPiModels(modelsPath)
   const modelsData = modelsInspection.status === 'valid' ? modelsInspection.data as Record<string, unknown> : null
@@ -310,12 +405,13 @@ async function collectChecks(options: DoctorOptions = {}): Promise<Check[]> {
       : `${unresolved.length} reference(s) not found in models.json`,
   })
 
+  const incompleteCapabilities = incompleteModelCapabilities(modelsData)
   checks.push({
     label: 'Model capabilities',
-    status: incompleteModelCapabilities(modelsData) === 0 ? OK : WARN,
-    detail: incompleteModelCapabilities(modelsData) === 0
+    status: incompleteCapabilities === 0 ? OK : WARN,
+    detail: incompleteCapabilities === 0
       ? 'configured custom models include context/output limits'
-      : `${incompleteModelCapabilities(modelsData)} custom model(s) rely on Pi defaults; verify and configure exact capabilities`,
+      : `${incompleteCapabilities} custom model(s) rely on Pi defaults; verify and configure exact capabilities`,
   })
 
   const caps = await readJson(getSubagentExtensionConfigPath(piHome))
@@ -466,7 +562,7 @@ export async function status(options: DoctorOptions = {}): Promise<void> {
   console.log(`  Pi CLI:       ${runtime.piVersion ?? 'not found'}`)
   console.log(`  pi-subagents: ${runtime.piSubagentsAvailable ? 'installed' : 'missing (required)'}`)
   console.log(`  Extensions:   ${selectedInstalled}/${selected.length} selected installed; owned=${owned}, adopted=${adopted}`)
-  console.log(`  Commands:     ${installedCommands}/${CCG_PI_MANAGED_PROMPT_NAMES.length} installed`)
+  console.log(`  Commands:     ${installedCommands}/${CCG_PI_MANAGED_PROMPT_NAMES.length} installed${installedCommands === CCG_PI_MANAGED_PROMPT_NAMES.length ? '; Pi uses /ccg-go (reload Pi if absent)' : metadata ? '; run ccg update' : '; run ccg init'}`)
   console.log(`  Persona:      ${normalizeCcgPersonaMetadata(metadata)}`)
   console.log(`  Task board:   ${await fs.pathExists(boardTasksRoot) ? boardTasksRoot : 'not created yet'}`)
   console.log(`  Install scope:${metadata ? ` ${String(metadata.scope ?? 'unknown')}` : ' not installed'}`)

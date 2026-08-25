@@ -4,12 +4,14 @@ import fs from 'fs-extra'
 import { join } from 'pathe'
 import {
   appendPiProviders,
+  assessPiThinkingLevel,
   computeEffectiveDevParallelism,
   computeRequiredSpawns,
   inspectPiModels,
   mergePiProviders,
   mergePiSettingsSubagents,
   mergeSubagentExtensionConfig,
+  parsePiThinkingLevel,
   reconcilePiSettingsSubagents,
   type PiModelsFile,
   type PiSettingsFile,
@@ -25,6 +27,28 @@ function tempRoot(name: string): string {
 
 afterAll(async () => {
   await Promise.all(tempRoots.map(dir => fs.remove(dir)))
+})
+
+describe('Pi thinking levels', () => {
+  it('parses the supported provider-neutral levels and rejects unknown values', () => {
+    for (const level of ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const) {
+      expect(parsePiThinkingLevel(level)).toBe(level)
+    }
+    expect(parsePiThinkingLevel(undefined)).toBeUndefined()
+    expect(() => parsePiThinkingLevel('HIGH', '--review-thinking')).toThrow(
+      'Invalid --review-thinking level: HIGH',
+    )
+  })
+
+  it('uses exact model metadata without guessing unknown capabilities', () => {
+    expect(assessPiThinkingLevel(undefined, 'high').status).toBe('unknown')
+    expect(assessPiThinkingLevel({ id: 'plain', reasoning: false }, 'off').status).toBe('supported')
+    expect(assessPiThinkingLevel({ id: 'plain', reasoning: false }, 'high').status).toBe('unsupported')
+    expect(assessPiThinkingLevel({ id: 'mapped', reasoning: true, thinkingLevelMap: { off: null } }, 'off').status).toBe('unsupported')
+    expect(assessPiThinkingLevel({ id: 'mapped', reasoning: true, thinkingLevelMap: { xhigh: 'xhigh' } }, 'xhigh').status).toBe('supported')
+    expect(assessPiThinkingLevel({ id: 'mapped', reasoning: true }, 'xhigh').status).toBe('supported')
+    expect(assessPiThinkingLevel({ id: 'mapped', reasoning: true }, 'max').status).toBe('unsupported')
+  })
 })
 
 describe('mergePiSettingsSubagents', () => {

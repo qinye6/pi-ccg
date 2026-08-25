@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.2.8] - 2026-08-25
+
+### Added
+
+- Added provider-neutral thinking-level configuration for planning, frontend, backend, and review subagent groups with `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max` levels.
+- Added interactive and non-interactive thinking controls, metadata persistence, update round-tripping, exact known-model capability validation, and doctor diagnostics.
+
+### Changed
+
+- Expanded `ccg init` to a thirteen-stage flow with a dedicated thinking stage.
+- Clarified the Pi `/ccg-go` prompt command versus Claude's `/ccg:go` skill and added actionable init/update/reload remediation when Pi's `/` menu is missing CCG commands.
+
+### Fixed
+
+- Clearing a thinking selection now restores Pi/model inheritance without deleting unrelated agent override fields.
+- Doctor now resolves inherited `subagents.defaultModel` capabilities and recognizes exact models registered through provider `modelOverrides`.
+
+### Security
+
+- Thinking and model settings continue to merge without exposing credentials or overwriting unrelated user-managed Pi configuration.
+
+---
+
 ## [3.2.7] - 2026-07-30
 
 ### Added

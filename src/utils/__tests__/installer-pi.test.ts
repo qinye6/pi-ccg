@@ -311,6 +311,74 @@ describe('installPiWorkflow', () => {
     expect(overrides['ccg-planner']).toBeUndefined()
   })
 
+  it('writes role-group thinking overrides while preserving user fields', async () => {
+    const { piHome, projectDir, templateDir } = await createSandbox('thinking-overrides')
+    await fs.ensureDir(piHome)
+    await fs.writeJson(join(piHome, 'settings.json'), {
+      userSetting: true,
+      subagents: {
+        agentOverrides: {
+          'ccg-backend-builder': { fallbackModels: ['demo/fallback'], tools: ['Read'] },
+          'user-agent': { disabled: false },
+        },
+      },
+    })
+
+    const result = await installPiWorkflow({
+      piHome,
+      projectDir,
+      templateDir,
+      frontendModel: 'demo/frontend',
+      backendModel: 'demo/backend',
+      reviewModel: 'demo/review',
+      planningThinking: 'medium',
+      frontendThinking: 'low',
+      backendThinking: 'high',
+      reviewThinking: 'xhigh',
+      force: true,
+    })
+
+    expect(result.success).toBe(true)
+    const settings = await fs.readJson(join(piHome, 'settings.json'))
+    expect(settings.userSetting).toBe(true)
+    expect(settings.subagents.agentOverrides['user-agent']).toEqual({ disabled: false })
+    expect(settings.subagents.agentOverrides['ccg-project-scout']).toEqual({ thinking: 'medium' })
+    expect(settings.subagents.agentOverrides['ccg-planner']).toEqual({ thinking: 'medium' })
+    expect(settings.subagents.agentOverrides['ccg-frontend-builder']).toEqual({ model: 'demo/frontend', thinking: 'low' })
+    expect(settings.subagents.agentOverrides['ccg-backend-builder']).toEqual({
+      model: 'demo/backend',
+      thinking: 'high',
+      fallbackModels: ['demo/fallback'],
+      tools: ['Read'],
+    })
+    expect(settings.subagents.agentOverrides['ccg-reviewer']).toEqual({ model: 'demo/review', thinking: 'xhigh' })
+    expect(settings.subagents.agentOverrides['ccg-test-runner']).toEqual({ model: 'demo/review', thinking: 'xhigh' })
+
+    const inherited = await installPiWorkflow({
+      piHome,
+      projectDir,
+      templateDir,
+      frontendModel: 'demo/frontend',
+      backendModel: 'demo/backend',
+      reviewModel: 'demo/review',
+      force: true,
+    })
+
+    expect(inherited.success).toBe(true)
+    const inheritedSettings = await fs.readJson(join(piHome, 'settings.json'))
+    expect(inheritedSettings.subagents.agentOverrides['ccg-project-scout']).toBeUndefined()
+    expect(inheritedSettings.subagents.agentOverrides['ccg-planner']).toBeUndefined()
+    expect(inheritedSettings.subagents.agentOverrides['ccg-frontend-builder']).toEqual({ model: 'demo/frontend' })
+    expect(inheritedSettings.subagents.agentOverrides['ccg-backend-builder']).toEqual({
+      model: 'demo/backend',
+      fallbackModels: ['demo/fallback'],
+      tools: ['Read'],
+    })
+    expect(inheritedSettings.subagents.agentOverrides['ccg-reviewer']).toEqual({ model: 'demo/review' })
+    expect(inheritedSettings.subagents.agentOverrides['ccg-test-runner']).toEqual({ model: 'demo/review' })
+    expect(inheritedSettings.subagents.agentOverrides['user-agent']).toEqual({ disabled: false })
+  })
+
   it('appends new providers, skips conflicts, and reports managed files', async () => {
     const { piHome, projectDir, templateDir } = await createSandbox('providers')
     const modelsPath = join(piHome, 'models.json')

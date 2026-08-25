@@ -2,7 +2,7 @@
 
 > [根目录](../CLAUDE.md) > **templates**
 
-**Last Updated**: 2026-07-30 (v3.2.7)
+**Last Updated**: 2026-08-25 (v3.2.8)
 
 ## 当前发布面
 
@@ -81,7 +81,7 @@ templates/pi/
 
 ## Durable board 与命令边界
 
-`/ccg` 是主入口；`/ccg-board`、`/ccg-replay` 只读；`/ccg-resume` 校验 checkpoint 后继续；`/ccg-go` 为兼容入口。leader 将 `ccg.taskBoard.v1` / `ccg.taskEvent.v1` 投影到 `.pi/ccg/tasks/<taskId>/board.json`、`events.jsonl`、`summary.md`。该目录是 project-local runtime history，uninstall 默认保留。看板不复制完整 transcript/stdout，不得包含凭据或用户 MCP 配置值。
+`/ccg` 是主入口；`/ccg-board`、`/ccg-replay` 只读；`/ccg-resume` 校验 checkpoint 后继续；`/ccg-go` 为兼容入口。它们是 Pi prompt commands；Claude harness 的 `/ccg:go` 属于不同命名空间。fresh install 缺失命令时运行 `ccg init`，已有 metadata 但 assets 缺失时运行 `ccg update`，prompt files 写入磁盘后需重启/重新加载 Pi 才会刷新 `/` 菜单。leader 将 `ccg.taskBoard.v1` / `ccg.taskEvent.v1` 投影到 `.pi/ccg/tasks/<taskId>/board.json`、`events.jsonl`、`summary.md`。该目录是 project-local runtime history，uninstall 默认保留。看板不复制完整 transcript/stdout，不得包含凭据或用户 MCP 配置值。
 
 ## Leader persona 与输出边界
 
@@ -99,6 +99,8 @@ templates/pi/
 | `{{BACKEND_MODEL}}` | generic backend builder instances model |
 | `{{REVIEW_MODEL}}` | reviewer/test-runner model |
 | managed block markers | `AGENTS.md` 受管区边界 |
+
+thinking 不是 prompt template placeholder。安装器按 planning、frontend、backend、review 四个角色组把显式选择合并到 `settings.json -> subagents.agentOverrides.<agent>.thinking`；省略时继承 Pi/模型默认且不写字段。选择由 CCG metadata 持久化并由 update 恢复。
 
 安装后不允许残留未处理的大写 CCG placeholder，也不允许出现 `.claude`、`codeagent-wrapper` 或旧模型路由 placeholder。
 

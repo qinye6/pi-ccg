@@ -1,4 +1,4 @@
-import type { InitOptions, InstallScope, PiCapsConfig, PiExtensionMetadataEntry, SupportedLang } from '../types'
+import type { InitOptions, InstallScope, PiCapsConfig, PiExtensionMetadataEntry, PiThinkingLevel, PiThinkingOverrides, SupportedLang } from '../types'
 import type { PiPersonaId } from '../utils/pi-personas'
 import ansis from 'ansis'
 import fs from 'fs-extra'
@@ -26,8 +26,8 @@ import {
   summarizeSelectedPiExtensions,
 } from '../utils/pi-extensions'
 import type { PiProvider } from '../utils/pi-config'
-import { computeEffectiveDevParallelism, computeRequiredSpawns, inspectPiModels, mergePiProviders, writeJsonAtomic } from '../utils/pi-config'
-import { buildPiProviderPresetOverride, PI_PROVIDER_MODEL_PRESETS } from '../utils/pi-provider-presets'
+import { assessPiThinkingLevel, computeEffectiveDevParallelism, computeRequiredSpawns, inspectPiModels, mergePiProviders, parsePiThinkingLevel, PI_THINKING_LEVELS, writeJsonAtomic } from '../utils/pi-config'
+import { buildPiProviderPresetOverride, findPiProviderModelPreset, PI_PROVIDER_MODEL_PRESETS } from '../utils/pi-provider-presets'
 import { applyPiExtensionConfigOperation, inspectPiWebSearchConfig, planPiWebSearchConfigOperation } from '../utils/pi-extension-config'
 import {
   DEFAULT_PI_CAPS,
@@ -40,12 +40,13 @@ import {
 } from '../utils/pi-runtime'
 import { getCurrentVersion } from '../utils/version'
 
-type StepId = 'lang' | 'env' | 'extensions' | 'scope' | 'provider' | 'frontend' | 'backend' | 'review' | 'limits' | 'persona' | 'entry' | 'summary'
+type StepId = 'lang' | 'env' | 'extensions' | 'scope' | 'provider' | 'frontend' | 'backend' | 'review' | 'thinking' | 'limits' | 'persona' | 'entry' | 'summary'
 type StepResult = 'next' | 'back' | 'cancel' | StepId
 
-const STEP_ORDER: StepId[] = ['lang', 'env', 'extensions', 'scope', 'provider', 'frontend', 'backend', 'review', 'limits', 'persona', 'entry', 'summary']
+const STEP_ORDER: StepId[] = ['lang', 'env', 'extensions', 'scope', 'provider', 'frontend', 'backend', 'review', 'thinking', 'limits', 'persona', 'entry', 'summary']
 const BACK = '__back__'
 const CANCEL = '__cancel__'
+const INHERIT = '__inherit__'
 
 function tx(key: string, options?: Record<string, unknown>): string {
   return i18n.t(key, options) as string
@@ -66,6 +67,7 @@ interface WizardState {
   frontendModel?: string
   backendModel?: string
   reviewModel?: string
+  thinking: PiThinkingOverrides
   persona: PiPersonaId
   caps: PiCapsConfig
   installProjectAssets: boolean
@@ -82,6 +84,49 @@ function normalizeCaps(options: InitOptions): PiCapsConfig {
     maxSpawnsPerSession: isPositiveInteger(options.maxSpawnsPerSession) ? options.maxSpawnsPerSession : DEFAULT_PI_CAPS.maxSpawnsPerSession,
     maxSubagentDepth: isPositiveInteger(options.maxSubagentDepth) ? options.maxSubagentDepth : DEFAULT_PI_CAPS.maxSubagentDepth,
   }
+}
+
+function normalizeThinking(options: InitOptions): PiThinkingOverrides {
+  return {
+    planningThinking: parsePiThinkingLevel(options.planningThinking, 'planning thinking'),
+    frontendThinking: parsePiThinkingLevel(options.frontendThinking, 'frontend thinking'),
+    backendThinking: parsePiThinkingLevel(options.backendThinking, 'backend thinking'),
+    reviewThinking: parsePiThinkingLevel(options.reviewThinking, 'review thinking'),
+  }
+}
+
+function presetForModelReference(modelReference: string | undefined) {
+  if (!modelReference?.includes('/')) return undefined
+  const [providerId, ...modelParts] = modelReference.split('/')
+  return findPiProviderModelPreset(providerId, modelParts.join('/'))
+}
+
+function assertThinkingSupported(
+  label: string,
+  modelReference: string | undefined,
+  level: PiThinkingLevel | undefined,
+): void {
+  if (!level || !modelReference) return
+  const preset = presetForModelReference(modelReference)
+  if (!preset) return
+  const assessment = assessPiThinkingLevel(preset.model, level)
+  if (assessment.status === 'unsupported') {
+    throw new Error(`${label} model ${modelReference} does not support thinking=${level}: ${assessment.reason}`)
+  }
+}
+
+function assertKnownThinkingSelections(state: WizardState): void {
+  assertThinkingSupported('Frontend', state.frontendModel, state.thinking.frontendThinking)
+  assertThinkingSupported('Backend', state.backendModel, state.thinking.backendThinking)
+  assertThinkingSupported('Review', state.reviewModel, state.thinking.reviewThinking)
+}
+
+function thinkingChoices(): Array<{ name: string, value: string }> {
+  return [
+    { name: '继承 Pi/模型默认（不写入）', value: INHERIT },
+    ...PI_THINKING_LEVELS.map(level => ({ name: level, value: level })),
+    ...navChoices(),
+  ]
 }
 
 async function readProviderFile(path?: string): Promise<Record<string, PiProvider>> {
@@ -331,6 +376,32 @@ async function runStep(step: StepId, state: WizardState): Promise<StepResult> {
     return 'next'
   }
 
+  if (step === 'thinking') {
+    const answer = await inquirer.prompt<Record<keyof PiThinkingOverrides, string>>([
+      { type: 'list', name: 'planningThinking', message: 'Scout/planner thinking:', choices: thinkingChoices(), default: state.thinking.planningThinking ?? INHERIT },
+      { type: 'list', name: 'frontendThinking', message: 'Frontend builder thinking:', choices: thinkingChoices(), default: state.thinking.frontendThinking ?? INHERIT },
+      { type: 'list', name: 'backendThinking', message: 'Backend builder thinking:', choices: thinkingChoices(), default: state.thinking.backendThinking ?? INHERIT },
+      { type: 'list', name: 'reviewThinking', message: 'Reviewer/test-runner thinking:', choices: thinkingChoices(), default: state.thinking.reviewThinking ?? INHERIT },
+    ])
+    const values = Object.values(answer)
+    if (values.includes(BACK)) return 'back'
+    if (values.includes(CANCEL)) return 'cancel'
+    state.thinking = {
+      planningThinking: answer.planningThinking === INHERIT ? undefined : parsePiThinkingLevel(answer.planningThinking),
+      frontendThinking: answer.frontendThinking === INHERIT ? undefined : parsePiThinkingLevel(answer.frontendThinking),
+      backendThinking: answer.backendThinking === INHERIT ? undefined : parsePiThinkingLevel(answer.backendThinking),
+      reviewThinking: answer.reviewThinking === INHERIT ? undefined : parsePiThinkingLevel(answer.reviewThinking),
+    }
+    try {
+      assertKnownThinkingSelections(state)
+    }
+    catch (error) {
+      console.log(ansis.yellow(`  ${error instanceof Error ? error.message : String(error)}`))
+      return 'thinking'
+    }
+    return 'next'
+  }
+
   if (step === 'limits') {
     const answer = await inquirer.prompt<PiCapsConfig>([
       { type: 'number', name: 'devAgentCap', message: '开发代理上限:', default: state.caps.devAgentCap, validate: isPositiveInteger },
@@ -406,6 +477,7 @@ async function runStep(step: StepId, state: WizardState): Promise<StepResult> {
   console.log(`  ${tx('piExtensions.fields.frontend')}: ${state.frontendModel ?? tx('piExtensions.summary.inheritDefault')}`)
   console.log(`  ${tx('piExtensions.fields.backend')}: ${state.backendModel ?? tx('piExtensions.summary.inheritDefault')}`)
   console.log(`  ${tx('piExtensions.fields.review')}: ${state.reviewModel ?? tx('piExtensions.summary.inheritDefault')}`)
+  console.log(`  thinking: planning=${state.thinking.planningThinking ?? 'inherit'}, frontend=${state.thinking.frontendThinking ?? 'inherit'}, backend=${state.thinking.backendThinking ?? 'inherit'}, review=${state.thinking.reviewThinking ?? 'inherit'}`)
   console.log(`  ${tx('piExtensions.fields.caps')}: dev=${state.caps.devAgentCap}, concurrency=${state.caps.globalConcurrencyLimit}, spawns=${state.caps.maxSpawnsPerSession}, depth=${state.caps.maxSubagentDepth}`)
   const { value } = await inquirer.prompt<{ value: string }>([{
     type: 'list', name: 'value', message: tx('piExtensions.confirm.title'),
@@ -418,6 +490,7 @@ async function runStep(step: StepId, state: WizardState): Promise<StepResult> {
       { name: tx('piExtensions.confirm.editFrontend'), value: 'frontend' },
       { name: tx('piExtensions.confirm.editBackend'), value: 'backend' },
       { name: tx('piExtensions.confirm.editReview'), value: 'review' },
+      { name: '修改 thinking 强度', value: 'thinking' },
       { name: tx('piExtensions.confirm.editLimits'), value: 'limits' },
       { name: tx('piExtensions.confirm.editPersona'), value: 'persona' },
       { name: tx('piExtensions.confirm.editEntry'), value: 'entry' },
@@ -467,6 +540,7 @@ async function writeMetadata(
       reviewModel: state.reviewModel,
       persona: state.persona,
       caps: state.caps,
+      thinking: state.thinking,
     },
     extensions,
     managedFiles,
@@ -497,6 +571,7 @@ export async function init(options: InitOptions = {}): Promise<void> {
     frontendModel: options.frontendModel ?? options.frontend,
     backendModel: options.backendModel ?? options.backend,
     reviewModel: options.reviewModel,
+    thinking: normalizeThinking(options),
     persona: normalizeRequestedPersona(options.persona, options.skipPrompt === true),
     caps: normalizeCaps(options),
     installProjectAssets: options.installProjectAssets ?? true,
@@ -530,6 +605,7 @@ export async function init(options: InitOptions = {}): Promise<void> {
     }
   }
 
+  assertKnownThinkingSelections(state)
   const providers = await readProviderFile(options.providerFile)
   const spinner = ora(tx('piExtensions.outcomes.spinner')).start()
   try {
@@ -540,6 +616,7 @@ export async function init(options: InitOptions = {}): Promise<void> {
       frontendModel: state.frontendModel,
       backendModel: state.backendModel,
       reviewModel: state.reviewModel,
+      ...state.thinking,
       persona: state.persona,
       caps: state.caps,
       providers,

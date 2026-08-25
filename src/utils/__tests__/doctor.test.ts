@@ -314,6 +314,83 @@ describe('doctor retired Pi agent handling', () => {
     expect(output).not.toContain('../private-persona-body')
   })
 
+  it('resolves saved thinking through agent and default model references', async () => {
+    const piHome = join(mockHome.path, '.pi', 'agent')
+    await fs.writeJson(join(piHome, 'ccg-workflow.json'), {
+      version: '3.2.7',
+      language: 'en',
+      scope: 'user',
+      lastChoices: {
+        thinking: { planningThinking: 'medium', backendThinking: 'high' },
+      },
+    })
+    await fs.writeJson(join(piHome, 'settings.json'), {
+      subagents: {
+        defaultModel: 'anthropic/claude-sonnet-5',
+        agentOverrides: {
+          'ccg-project-scout': { thinking: 'medium' },
+          'ccg-planner': { thinking: 'medium' },
+          'ccg-backend-builder': { model: 'anthropic/claude-sonnet-5', thinking: 'high' },
+        },
+      },
+    })
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await doctor()
+
+    const output = log.mock.calls.map(args => args.join(' ')).join('\n')
+    expect(output).toContain('Subagent thinking')
+    expect(output).toContain('groups=2')
+    expect(output).toContain('settingsMismatch=0')
+    expect(output).toContain('unsupported=0')
+    expect(output).toContain('capabilityUnknown=0')
+  })
+
+  it('recognizes exact models registered through provider modelOverrides', async () => {
+    const piHome = join(mockHome.path, '.pi', 'agent')
+    await fs.writeJson(join(piHome, 'settings.json'), {
+      subagents: {
+        agentOverrides: {
+          'ccg-backend-builder': { model: 'anthropic/claude-sonnet-5' },
+        },
+      },
+    })
+    await fs.writeJson(join(piHome, 'models.json'), {
+      providers: {
+        anthropic: {
+          modelOverrides: {
+            'claude-sonnet-5': { contextWindow: 1000000, maxTokens: 128000 },
+          },
+        },
+      },
+    })
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await doctor()
+
+    const output = log.mock.calls.map(args => args.join(' ')).join('\n')
+    expect(output).toContain('Model references')
+    expect(output).toContain('resolved or delegated to Pi built-ins')
+    expect(output).not.toContain('reference(s) not found in models.json')
+  })
+
+  it('distinguishes fresh init, update repair, and Pi reload remediation', async () => {
+    const piHome = join(mockHome.path, '.pi', 'agent')
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await doctor()
+    let output = log.mock.calls.map(args => args.join(' ')).join('\n')
+    expect(output).toContain('not initialized:')
+    expect(output).toContain('run: ccg init')
+    expect(output).toContain('Pi command is /ccg-go, not /ccg:go')
+
+    log.mockClear()
+    await fs.writeJson(join(piHome, 'ccg-workflow.json'), { version: '3.2.7', scope: 'user' })
+    await doctor()
+    output = log.mock.calls.map(args => args.join(' ')).join('\n')
+    expect(output).toContain('run: ccg update')
+  })
+
   it('uses user-level chain and prompt paths for user-only metadata', async () => {
     const piHome = join(mockHome.path, '.pi', 'agent')
     await fs.ensureDir(join(piHome, 'chains'))
@@ -333,6 +410,8 @@ describe('doctor retired Pi agent handling', () => {
     const output = log.mock.calls.map(args => args.join(' ')).join('\n')
     expect(output).toContain(join(piHome, 'chains', 'ccg-plan.chain.md'))
     expect(output).toContain('5/5 installed: /ccg, /ccg-board, /ccg-replay, /ccg-resume, /ccg-go')
+    expect(output).toContain('restart/reload Pi if they are absent from the / menu')
+    expect(output).toContain('Claude uses /ccg:go')
     expect(output).toContain('not required for user-only install scope')
     expect(output).not.toContain('not installed in current project')
   })

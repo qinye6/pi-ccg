@@ -9,7 +9,7 @@ CCG turns Pi CLI into a bounded multi-agent development supervisor. Pi remains t
 
 [简体中文](./README.zh-CN.md)
 
-> Current package version: `3.2.7` · Node.js `>=20`
+> Current package version: `3.2.8` · Node.js `>=20`
 
 ## What It Does
 
@@ -97,7 +97,7 @@ Prerequisites:
 - Node.js `>=20`
 - Pi CLI
 
-Run the twelve-stage interactive installer:
+Run the thirteen-stage interactive installer:
 
 ```bash
 npx pi-ccg init
@@ -137,6 +137,10 @@ npx pi-ccg init \
   --frontend-model provider/frontend-model \
   --backend-model provider/backend-model \
   --review-model provider/review-model \
+  --planning-thinking medium \
+  --frontend-thinking low \
+  --backend-thinking high \
+  --review-thinking high \
   --dev-agent-cap 4 \
   --global-concurrency-limit 4 \
   --max-spawns-per-session 24 \
@@ -157,6 +161,8 @@ Model settings are independent:
 - Backend model → generic `ccg-backend-builder` instances
 - Review model → `ccg-reviewer` and `ccg-test-runner`
 - Scout and planner inherit Pi's configured `subagents.defaultModel`
+
+Thinking intensity is configured independently with `--planning-thinking`, `--frontend-thinking`, `--backend-thinking`, and `--review-thinking`. Accepted values are `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. The four groups map to scout/planner, frontend builder, backend builder, and reviewer/test-runner respectively. Omitting a flag preserves Pi/model defaults and writes no `thinking` field. CCG stores explicit selections in metadata for update and merges them into `settings.json -> subagents.agentOverrides` without replacing unrelated user fields. Exact known models are validated against `reasoning` and `thinkingLevelMap`; unknown models are preserved with a doctor capability warning instead of guessed.
 
 Use `--provider-file <path>` only for non-secret provider definitions. Interactive onboarding can create a custom provider/model using an API-key environment-variable reference; it never requests or stores the real key. CCG recognizes only exact, verified model IDs when filling `contextWindow` and `maxTokens`; unknown models require explicit user values and are never guessed. Existing `models.json` data is inspected as missing/valid/invalid, invalid JSON is never overwritten, and exact provider/model merges preserve pricing, nested compatibility settings, sibling models, and unknown user fields.
 
@@ -186,6 +192,10 @@ Useful init flags:
 --frontend-model <provider/model>
 --backend-model <provider/model>
 --review-model <provider/model>
+--planning-thinking <level>
+--frontend-thinking <level>
+--backend-thinking <level>
+--review-thinking <level>
 --provider-file <path>
 --persona <name>
 --dev-agent-cap <number>
@@ -237,7 +247,7 @@ Content outside that block is preserved. Uninstall removes only managed files, m
 
 ## Pi slash commands and task board
 
-After installation, Pi discovers `/ccg` as the main natural-language entry. `/ccg-board` displays the current or selected task, `/ccg-replay` produces a read-only timeline, `/ccg-resume` validates a durable checkpoint before continuing, and `/ccg-go` remains a compatibility entry.
+After installation, Pi discovers `/ccg` as the main natural-language entry. `/ccg-board` displays the current or selected task, `/ccg-replay` produces a read-only timeline, `/ccg-resume` validates a durable checkpoint before continuing, and `/ccg-go` remains a compatibility entry. `/ccg:go` belongs to the Claude harness and is not a Pi prompt command. If the commands are missing from Pi's `/` menu, run `ccg init` for a fresh installation or `ccg update` for an existing installation with missing assets, then restart/reload Pi so it reindexes prompt files.
 
 The leader is the only state writer and agent dispatcher. Each child uses `context: "fresh"`; builders hand `FINISH` to the leader, the leader starts the independent test-runner/reviewer, and failures return through the leader to the owning builder. Test and review agents never modify product code.
 

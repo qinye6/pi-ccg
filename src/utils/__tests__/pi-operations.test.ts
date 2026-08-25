@@ -46,6 +46,10 @@ describe('Pi init and update operations', () => {
       frontendModel: 'demo/frontend',
       backendModel: 'demo/backend',
       reviewModel: 'demo/review',
+      planningThinking: 'medium',
+      frontendThinking: 'low',
+      backendThinking: 'high',
+      reviewThinking: 'xhigh',
       persona: 'nekomata-engineer',
     })
 
@@ -60,6 +64,12 @@ describe('Pi init and update operations', () => {
       frontendModel: 'demo/frontend',
       backendModel: 'demo/backend',
       reviewModel: 'demo/review',
+      thinking: {
+        planningThinking: 'medium',
+        frontendThinking: 'low',
+        backendThinking: 'high',
+        reviewThinking: 'xhigh',
+      },
       persona: 'nekomata-engineer',
     })
     for (const agent of CCG_AGENTS) {
@@ -79,6 +89,24 @@ describe('Pi init and update operations', () => {
     })).rejects.toThrow('Unknown Pi persona: ../escape')
   })
 
+  it('rejects invalid or known-unsupported thinking during non-interactive init', async () => {
+    const { piHome, projectDir } = await createSandbox('invalid-thinking')
+    process.chdir(projectDir)
+
+    await expect(init({
+      installDir: piHome,
+      skipPrompt: true,
+      backendThinking: 'extreme' as never,
+    })).rejects.toThrow('Invalid backend thinking level: extreme')
+
+    await expect(init({
+      installDir: piHome,
+      skipPrompt: true,
+      backendModel: 'anthropic/claude-fable-5',
+      backendThinking: 'off',
+    })).rejects.toThrow('does not support thinking=off')
+  })
+
   it('restores metadata choices and preserves unrelated Pi configuration during update', async () => {
     const { piHome, projectDir } = await createSandbox('update')
     const metadataPath = join(piHome, 'ccg-workflow.json')
@@ -92,6 +120,12 @@ describe('Pi init and update operations', () => {
         frontendModel: 'demo/frontend',
         backendModel: 'demo/backend',
         reviewModel: 'demo/review',
+        thinking: {
+          planningThinking: 'medium',
+          frontendThinking: 'low',
+          backendThinking: 'high',
+          reviewThinking: 'xhigh',
+        },
         caps: {
           devAgentCap: 3,
           globalConcurrencyLimit: 3,
@@ -156,10 +190,12 @@ describe('Pi init and update operations', () => {
     expect(settings.userTheme).toBe('preserve-me')
     expect(settings.subagents.defaultModel).toBe('demo/default')
     expect(settings.subagents.agentOverrides['user-agent']).toEqual({ model: 'demo/user' })
-    expect(settings.subagents.agentOverrides['ccg-backend-builder']).toEqual({ model: 'demo/backend' })
-    expect(settings.subagents.agentOverrides['ccg-frontend-builder']).toEqual({ model: 'demo/frontend' })
-    expect(settings.subagents.agentOverrides['ccg-reviewer']).toEqual({ model: 'demo/review' })
-    expect(settings.subagents.agentOverrides['ccg-test-runner']).toEqual({ model: 'demo/review' })
+    expect(settings.subagents.agentOverrides['ccg-backend-builder']).toEqual({ model: 'demo/backend', thinking: 'high' })
+    expect(settings.subagents.agentOverrides['ccg-frontend-builder']).toEqual({ model: 'demo/frontend', thinking: 'low' })
+    expect(settings.subagents.agentOverrides['ccg-reviewer']).toEqual({ model: 'demo/review', thinking: 'xhigh' })
+    expect(settings.subagents.agentOverrides['ccg-test-runner']).toEqual({ model: 'demo/review', thinking: 'xhigh' })
+    expect(settings.subagents.agentOverrides['ccg-project-scout']).toEqual({ thinking: 'medium' })
+    expect(settings.subagents.agentOverrides['ccg-planner']).toEqual({ thinking: 'medium' })
     expect(settings.subagents.agentOverrides[RETIRED_MINIPROGRAM_AGENT]).toBeUndefined()
     expect(await fs.readJson(join(piHome, 'models.json'))).toEqual({
       providers: { userProvider: { apiKey: '[密钥]', models: [] } },
@@ -190,7 +226,7 @@ describe('Pi init and update operations', () => {
 
     expect(result).toEqual({ success: true, errors: [] })
     const metadata = await fs.readJson(metadataPath)
-    expect(metadata.version).toBe('3.2.7')
+    expect(metadata.version).toBe('3.2.8')
     expect(metadata.scope).toBe('user')
     expect(metadata.lastChoices.caps).toEqual({
       devAgentCap: 4,
@@ -213,6 +249,31 @@ describe('Pi init and update operations', () => {
     const corrupted = structuredClone(selected)
     ;(corrupted.lastChoices as { persona?: string }).persona = '../escape'
     expect(initOptionsFromMetadata(corrupted).persona).toBe('default')
+  })
+
+  it('restores thinking selections and preserves them in latest init arguments', () => {
+    const metadata = createDefaultMetadata({
+      language: 'en',
+      lastChoices: {
+        thinking: {
+          planningThinking: 'medium',
+          frontendThinking: 'low',
+          backendThinking: 'high',
+          reviewThinking: 'xhigh',
+        },
+      },
+    })
+    const options = initOptionsFromMetadata(metadata)
+
+    expect(options).toMatchObject({
+      planningThinking: 'medium',
+      frontendThinking: 'low',
+      backendThinking: 'high',
+      reviewThinking: 'xhigh',
+    })
+    const args = buildLatestInitArgs(options)
+    expect(args.slice(args.indexOf('--planning-thinking'), args.indexOf('--planning-thinking') + 2)).toEqual(['--planning-thinking', 'medium'])
+    expect(args.slice(args.indexOf('--review-thinking'), args.indexOf('--review-thinking') + 2)).toEqual(['--review-thinking', 'xhigh'])
   })
 
   it('passes a custom Pi home and persona to the latest package installer', () => {
